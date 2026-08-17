@@ -1,0 +1,171 @@
+{
+  "status": "Success",
+  "passed": true,
+  "errors": [],
+  "warnings": [],
+  "test_cases": [
+    {
+      "test_case_id": "TC-001",
+      "requirement_id": "REQ-001",
+      "acceptance_criteria_ids": [
+        "REQ-001-AC-1",
+        "REQ-001-AC-2",
+        "REQ-001-AC-3"
+      ],
+      "title": "Verify free tier access and labeling without paywall interruption",
+      "preconditions": [
+        "User is not subscribed to any plan.",
+        "App is installed and launched."
+      ],
+      "steps": [
+        "Open the app and navigate to the workout library.",
+        "Count the number of distinct workouts available without a subscription.",
+        "Check if each workout is labeled as 'Free' or 'Premium'.",
+        "Select a free workout and start it.",
+        "Complete the workout without encountering any paywall prompts."
+      ],
+      "expected_result": "At least 5 distinct workouts are accessible without a subscription. Each workout is clearly labeled as free or premium. The free workout can be completed without any paywall interruptions.",
+      "test_type": "functional",
+      "priority": "P1"
+    },
+    {
+      "test_case_id": "TC-002",
+      "requirement_id": "REQ-002",
+      "acceptance_criteria_ids": [
+        "REQ-002-AC-1",
+        "REQ-002-AC-2",
+        "REQ-002-AC-3",
+        "REQ-002-AC-4"
+      ],
+      "title": "Verify subscription transparency, trial reminder, in-app cancellation, and no unexpected charges",
+      "preconditions": [
+        "User has an active trial subscription.",
+        "User is logged into the app."
+      ],
+      "steps": [
+        "Navigate to the subscription purchase screen.",
+        "Verify that the price and renewal period are displayed before purchase.",
+        "Set the trial to expire in 24 hours or less.",
+        "Check that a reminder notification is received at least 24 hours before trial end.",
+        "Go to the subscription settings in the app.",
+        "Cancel the subscription directly within the app without contacting support.",
+        "Wait for the trial period to end and check for any charges on the payment method."
+      ],
+      "expected_result": "Subscription details are visible before purchase. A reminder is received at least 24 hours before trial end. The user can cancel within the app without support. No unexpected charges occur after cancellation.",
+      "test_type": "functional",
+      "priority": "P1"
+    },
+    {
+      "test_case_id": "TC-003",
+      "requirement_id": "REQ-003",
+      "acceptance_criteria_ids": [
+        "REQ-003-AC-1",
+        "REQ-003-AC-2",
+        "REQ-003-AC-3"
+      ],
+      "title": "Verify workout content realism, variety, and respectful imagery",
+      "preconditions": [
+        "User has access to the workout library."
+      ],
+      "steps": [
+        "Browse through multiple workout descriptions and images.",
+        "Check that descriptions and images are realistic and not described as 'AI slop' or 'cheesy AI mockups'.",
+        "Compare several workouts to ensure they are varied and not repetitive.",
+        "Inspect imagery for any unrealistic or objectifying content."
+      ],
+      "expected_result": "Workout descriptions and images are realistic and not described as 'AI slop' or 'cheesy AI mockups'. Workouts are varied and not repetitive. No unrealistic or objectifying imagery is present.",
+      "test_type": "functional",
+      "priority": "P1"
+    },
+    {
+      "test_case_id": "TC-004",
+      "requirement_id": "REQ-004",
+      "acceptance_criteria_ids": [
+        "REQ-004-AC-1",
+        "REQ-004-AC-2",
+        "REQ-004-AC-3"
+      ],
+      "title": "Verify ads are dismissible and do not redirect during workout",
+      "preconditions": [
+        "User is in a workout session.",
+        "An ad is displayed."
+      ],
+      "steps": [
+        "Start a workout session.",
+        "When an ad appears, locate the close button.",
+        "Click the close button to dismiss the ad.",
+        "Verify that the user returns to the workout without further interruption.",
+        "Continue the workout and check that no external website redirects occur."
+      ],
+      "expected_result": "Ads have a clear and easily accessible close button. After dismissal, the user returns to the workout without further interruption. No external website redirects occur during the workout session.",
+      "test_type": "functional",
+      "priority": "P2"
+    },
+    {
+      "test_case_id": "TC-005",
+      "requirement_id": "REQ-005",
+      "acceptance_criteria_ids": [
+        "REQ-005-AC-1",
+        "REQ-005-AC-2",
+        "REQ-005-AC-3"
+      ],
+      "title": "Verify user preferences are respected and plan settings persist",
+      "preconditions": [
+        "User has set a preference to avoid a specific body area (e.g., knees).",
+        "User has customized plan settings."
+      ],
+      "steps": [
+        "Open the app and navigate to the workout plan.",
+        "Check that no exercises targeting the avoided body area are included.",
+        "Close the app and reopen it.",
+        "Navigate to the plan settings and verify that the settings remain as previously set.",
+        "Locate the option to review and adjust plan settings and confirm it is accessible."
+      ],
+      "expected_result": "No exercises target the avoided body area. Plan settings persist across sessions. The user can review and adjust plan settings at any time.",
+      "test_type": "functional",
+      "priority": "P2"
+    },
+    {
+      "test_case_id": "TC-006",
+      "requirement_id": "REQ-006",
+      "acceptance_criteria_ids": [
+        "REQ-006-AC-1",
+        "REQ-006-AC-2",
+        "REQ-006-AC-3"
+      ],
+      "title": "Verify marketing and onboarding imagery is respectful and realistic",
+      "preconditions": [
+        "User is viewing marketing materials or onboarding screens."
+      ],
+      "steps": [
+        "Open the app's marketing page or onboarding flow.",
+        "Inspect all images for unrealistic body proportions or objectification of women.",
+        "Check that imagery focuses on fitness, strength, and health rather than sexualization.",
+        "Collect user feedback or review comments to see if imagery is described as 'cheesy' or 'fake'."
+      ],
+      "expected_result": "Imagery does not depict unrealistic body proportions or objectify women. Imagery focuses on fitness, strength, and health. Users do not describe the imagery as 'cheesy' or 'fake'.",
+      "test_type": "functional",
+      "priority": "P2"
+    }
+  ],
+  "coverage": {
+    "total_requirements": 6,
+    "covered_requirements": 6,
+    "requirement_coverage": 100.0,
+    "total_acceptance_criteria": 19,
+    "covered_acceptance_criteria": 19,
+    "acceptance_criteria_coverage": 100.0,
+    "uncovered_requirement_ids": [],
+    "uncovered_acceptance_criteria_ids": []
+  },
+  "unknown_requirement_ids": [],
+  "unknown_acceptance_criteria_ids": [],
+  "acceptance_criteria_mismatches": [],
+  "duplicate_test_case_ids": [],
+  "invalid_test_type_errors": [],
+  "invalid_priority_errors": [],
+  "priority_mismatches": [],
+  "generic_test_case_errors": [],
+  "traceability_errors": [],
+  "scope_overreach_errors": []
+}

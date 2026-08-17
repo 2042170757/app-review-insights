@@ -1,0 +1,21 @@
+{
+  "provider": "apify",
+  "actor": "apihq/app-store-reviews-scraper",
+  "app_id": "839285684",
+  "territory": "US",
+  "requested_limit": 50,
+  "actual_count": 50,
+  "retrieved_at": "2026-08-17T15:16:29.153631+00:00",
+  "is_live": true,
+  "source_url": "https://apify.com/apihq/app-store-reviews-scraper",
+  "limitations": [
+    "Apify is a third-party collection provider, not Apple App Store Connect API.",
+    "The requested limit is a maximum target, not a guaranteed count.",
+    "Fields, availability, frequency, and accuracy depend on the provider and Apple's storefront behavior.",
+    "This smoke test validates up to 50 recent US reviews and does not guarantee complete historical coverage."
+  ],
+  "run_id": "fbhXWBvIEXVXtg2md",
+  "dataset_id": "jLiJ5r8rlphhrQSei",
+  "actor_status": "SUCCEEDED",
+  "errors": []
+}

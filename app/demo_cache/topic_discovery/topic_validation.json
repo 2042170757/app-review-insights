@@ -1,0 +1,88 @@
+{
+  "status": "Success",
+  "passed": true,
+  "errors": [],
+  "warnings": [],
+  "topics": [
+    {
+      "topic_id": "TOPIC-001",
+      "name": "Paywall and loss of free access",
+      "description": "Users complain that the app has moved from free to paid, with workouts now behind a paywall, limiting free usage.",
+      "review_ids": [
+        "14424309790",
+        "14423833481",
+        "14421357217",
+        "14408658475",
+        "14381025970",
+        "14334995806",
+        "14320776504",
+        "14314433809",
+        "14306466803",
+        "14303029084"
+      ],
+      "confidence": 0.95,
+      "uncertainty": "High confidence as multiple reviews explicitly mention paywall and loss of free access."
+    },
+    {
+      "topic_id": "TOPIC-002",
+      "name": "Subscription and billing issues",
+      "description": "Users report unexpected charges, misleading subscription terms, difficulty canceling, and poor customer support regarding billing.",
+      "review_ids": [
+        "14397715067",
+        "14342854364",
+        "14297707993",
+        "14329131554"
+      ],
+      "confidence": 0.9,
+      "uncertainty": "Moderate confidence; some reviews mention billing issues but not all are explicit about subscription details."
+    },
+    {
+      "topic_id": "TOPIC-003",
+      "name": "AI-generated content and quality decline",
+      "description": "Users express disappointment with the increased use of AI-generated workouts and avatars, and a perceived decline in app quality.",
+      "review_ids": [
+        "14359950060",
+        "14367493057",
+        "14397715067",
+        "14314433809"
+      ],
+      "confidence": 0.85,
+      "uncertainty": "Moderate confidence; some reviews mention AI and quality decline, but not all are explicit."
+    },
+    {
+      "topic_id": "TOPIC-004",
+      "name": "Ads and redirects",
+      "description": "Users complain about intrusive ads, difficulty exiting ads, and unexpected redirects to external websites.",
+      "review_ids": [
+        "14411802642",
+        "14314433809",
+        "14359950060"
+      ],
+      "confidence": 0.8,
+      "uncertainty": "Moderate confidence; only a few reviews mention ads, but they are clear about the issue."
+    },
+    {
+      "topic_id": "TOPIC-005",
+      "name": "Workout customization and plan issues",
+      "description": "Users report that the app does not properly tailor workouts to their preferences or injuries, and that plan settings reset unexpectedly.",
+      "review_ids": [
+        "14353095830",
+        "14366479265",
+        "14401657445"
+      ],
+      "confidence": 0.75,
+      "uncertainty": "Moderate confidence; some reviews mention customization issues, but not all are explicit."
+    },
+    {
+      "topic_id": "TOPIC-006",
+      "name": "Body image and marketing concerns",
+      "description": "Users criticize the app for objectifying women's bodies and using unrealistic imagery in marketing and onboarding.",
+      "review_ids": [
+        "14330268991",
+        "14359950060"
+      ],
+      "confidence": 0.7,
+      "uncertainty": "Moderate confidence; only two reviews mention this, but they are detailed."
+    }
+  ]
+}

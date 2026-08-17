@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.api import results
+from app.demo import DemoCacheError, validate_demo_cache
 from app.imports import ImportValidationError, create_import_dataset, max_import_bytes
 from app.workflow.orchestrator import (
     WorkflowActiveRunError,
@@ -77,6 +78,20 @@ def create_app(orchestrator: WorkflowOrchestrator | None = None) -> FastAPI:
     @api.post("/api/import/csv")
     async def import_csv(file: UploadFile = File(...), app_url: str = Form("")) -> dict[str, Any]:
         return await _import_preview(workflow, source_type="csv", file=file, app_url=app_url)
+
+    @api.get("/api/demo/metadata")
+    def get_demo_metadata() -> dict[str, Any]:
+        validation = validate_demo_cache()
+        if validation["status"] != "PASS":
+            raise HTTPException(status_code=500, detail={"type": "Invalid Demo Cache", "message": validation["errors"][0]})
+        return validation
+
+    @api.get("/api/demo/run")
+    def get_demo_run() -> dict[str, Any]:
+        try:
+            return workflow.create_demo_run().to_dict()
+        except DemoCacheError as exc:
+            raise HTTPException(status_code=500, detail={"type": "Invalid Demo Cache", "message": str(exc)}) from exc
 
     @api.get("/api/runs/{run_id}")
     def get_run(run_id: str) -> dict[str, Any]:

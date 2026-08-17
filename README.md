@@ -57,6 +57,24 @@ The application must also support importing review data from a documented JSON o
 
 The GitHub project should preserve a complete commit history to show the candidate's implementation process, iteration process, and use of vibe coding.
 
+## Offline Cached Demo Mode
+
+The UI provides two explicit modes:
+
+- `Live Analysis`: runs the configured live providers and model pipeline for the selected App Store source or uploaded JSON/CSV reviews.
+- `Cached Demo`: loads a built-in cache for offline interview presentation without calling Apify or DeepSeek.
+
+The cached demo is clearly labeled as `Cached / Demo Data` in the dashboard. It is not a fallback for live failures and must not be treated as a fresh analysis of a new app, new review file, or new analysis goal.
+
+The backend exposes the cached demo through:
+
+```bash
+GET /api/demo/run
+GET /api/demo/metadata
+```
+
+The cache metadata is stored in `app/demo_cache/demo_metadata.json` and contains no API keys or provider tokens.
+
 ## Technical Requirements and Notes
 
 - There is no restriction on the tech stack.

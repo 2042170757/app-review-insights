@@ -1,0 +1,11 @@
+{
+  "input_count": 50,
+  "valid_count": 50,
+  "invalid_count": 0,
+  "exact_duplicate_count": 0,
+  "near_duplicate_count": 0,
+  "retained_count": 50,
+  "processing_timestamp": "2026-08-17T15:16:49.870135+00:00",
+  "exclusion_reasons": {},
+  "near_duplicate_threshold": 0.82
+}

@@ -114,7 +114,7 @@ button.compact {
 
 .run-form {
   display: grid;
-  grid-template-columns: minmax(280px, 1.2fr) minmax(320px, 1.6fr) minmax(210px, 0.7fr) auto;
+  grid-template-columns: minmax(260px, 1.1fr) minmax(300px, 1.45fr) minmax(180px, 0.6fr) minmax(210px, 0.7fr) auto;
   align-items: end;
   gap: 12px;
 }
@@ -199,9 +199,74 @@ button.compact {
   font-size: 13px;
 }
 
+.demo-notice,
+.mode-banner {
+  border: 1px solid #d8bf6a;
+  border-radius: 7px;
+  background: #fff8dd;
+  color: #463b14;
+}
+
+.demo-notice {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+}
+
+.demo-notice.compact {
+  font-size: 13px;
+}
+
+.mode-banner {
+  width: min(1680px, 100%);
+  margin: 0 auto 12px;
+  padding: 12px 14px;
+}
+
+.mode-banner,
+.mode-banner > div,
+.banner-facts {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mode-banner > div {
+  min-width: 280px;
+  flex: 1;
+}
+
+.live-banner {
+  border-color: #c8d7de;
+  background: #f8fafb;
+  color: #31515c;
+}
+
+.banner-facts {
+  margin: 0;
+}
+
+.banner-facts dt,
+.banner-facts dd {
+  margin: 0;
+}
+
+.banner-facts dt {
+  color: #66591f;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.banner-facts dd {
+  color: #172026;
+  font-weight: 700;
+}
+
 .run-header {
   display: grid;
-  grid-template-columns: repeat(5, minmax(130px, 1fr)) minmax(240px, 1.4fr);
+  grid-template-columns: repeat(6, minmax(120px, 1fr)) minmax(220px, 1.3fr);
   gap: 10px;
   align-items: stretch;
 }

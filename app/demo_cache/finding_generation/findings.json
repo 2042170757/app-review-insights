@@ -1,0 +1,120 @@
+{
+  "findings": [
+    {
+      "finding_id": "FINDING-001",
+      "issue_ids": [
+        "ISSUE-001"
+      ],
+      "review_ids": [
+        "14424309790",
+        "14423833481",
+        "14421357217",
+        "14408658475",
+        "14381025970",
+        "14334995806",
+        "14320776504",
+        "14314433809",
+        "14306466803",
+        "14303029084"
+      ],
+      "title": "Loss of free access and paywall restrictions frustrate long-term users",
+      "statement": "Based on the current review sample, multiple users who previously used the app for free report that the app now restricts access to workouts behind a paywall, limiting free usage to a very small number of workouts or requiring payment for most features.",
+      "evidence_summary": "Ten reviews (ratings 1-3) explicitly mention that the app used to be free or had more free options, but now workouts are behind a paywall. For example, one user states 'I can barely use anything since you can only do one workout with an ad or the rest are behind a paywall' (14424309790). Another says 'they’ve changed it so I am unable to do any workouts without paying' (14423833481). Several users express disappointment and sadness about losing free access, and some mention they are considering or have switched to other apps.",
+      "support_count": 10,
+      "confidence": 0.95,
+      "uncertainty": "High confidence based on the current sample, as all ten reviews consistently describe the paywall issue. However, the sample is limited to these reviews and may not represent all users. One review (14303029084) has a rating of 3 and a brief statement 'I’m not paying to workout that is stupid', which supports the finding but with less detail; it is included in review_ids.",
+      "conflicting_review_ids": []
+    },
+    {
+      "finding_id": "FINDING-002",
+      "issue_ids": [
+        "ISSUE-002"
+      ],
+      "review_ids": [
+        "14397715067",
+        "14342854364",
+        "14297707993",
+        "14329131554"
+      ],
+      "title": "Subscription and billing issues include unexpected charges and difficulty canceling",
+      "statement": "Based on the current review sample, some users report being charged unexpectedly after a trial, having difficulty canceling subscriptions, and encountering misleading subscription terms, leading to frustration and requests for refunds.",
+      "evidence_summary": "Four reviews describe various billing problems. One user reports being charged after a trial without a clear reminder (14397715067). Another mentions being unable to cancel a yearly renewal and having trouble contacting support (14342854364). A third user states they were misled about the subscription price (39.99 per month vs per year) and could not find subscription details in the app (14297707993). A fourth review, despite a 5-star rating, complains that the free trial didn't work as expected and asked for payment on day 3 (14329131554).",
+      "support_count": 4,
+      "confidence": 0.9,
+      "uncertainty": "Moderate to high confidence based on the current sample. All four reviews mention billing or subscription issues, but the details vary. One review (14329131554) has a positive rating but explicitly describes a billing problem; it is included in review_ids because it supports the finding, and its mixed sentiment is noted.",
+      "conflicting_review_ids": []
+    },
+    {
+      "finding_id": "FINDING-003",
+      "issue_ids": [
+        "ISSUE-003"
+      ],
+      "review_ids": [
+        "14359950060",
+        "14367493057",
+        "14397715067",
+        "14314433809"
+      ],
+      "title": "Increased use of AI-generated content and perceived decline in workout quality",
+      "statement": "Based on the current review sample, some users express disappointment with the app's increased use of AI-generated workouts and avatars, and a perceived decline in the quality and creativity of workout content.",
+      "evidence_summary": "Four reviews mention AI-generated content or quality decline. One user complains about 'cheesy AI mockups' and unrealistic images (14359950060). Another says 'It’s all AI slop' and that the app is 'not the same at ALL' (14367493057). A third review mentions 'outdated, repetitive, and lack creativity' in workouts (14397715067). A fourth review notes a decline in quality and mentions the app redirecting to Shein (14314433809).",
+      "support_count": 4,
+      "confidence": 0.85,
+      "uncertainty": "Moderate confidence based on the current sample. The reviews consistently mention AI or quality decline, but the sample is small. One review (14314433809) focuses more on paywall and redirects, but also mentions quality decline; it is included in review_ids.",
+      "conflicting_review_ids": []
+    },
+    {
+      "finding_id": "FINDING-004",
+      "issue_ids": [
+        "ISSUE-004"
+      ],
+      "review_ids": [
+        "14411802642",
+        "14314433809",
+        "14359950060"
+      ],
+      "title": "Intrusive ads and unexpected redirects disrupt user experience",
+      "statement": "Based on the current review sample, some users report that ads are intrusive, difficult to exit, and that the app sometimes redirects to external websites during workouts, negatively impacting their experience.",
+      "evidence_summary": "Three reviews mention ad-related issues. One user says 'Even after you watch the 90 second ads, there’s no way to get out of it and proceed to the app' (14411802642). Another mentions 'randomly during my workouts the app redirects me to Shein’s website' (14314433809). A third review mentions 'weird ads too, not even like normal ones' (14359950060).",
+      "support_count": 3,
+      "confidence": 0.8,
+      "uncertainty": "Moderate confidence based on the current sample. Only three reviews mention ads, but they are clear about the issue. The sample is limited, and the frequency of ads may vary.",
+      "conflicting_review_ids": []
+    },
+    {
+      "finding_id": "FINDING-005",
+      "issue_ids": [
+        "ISSUE-005"
+      ],
+      "review_ids": [
+        "14353095830",
+        "14366479265",
+        "14401657445"
+      ],
+      "title": "Workout customization and plan settings do not always align with user preferences",
+      "statement": "Based on the current review sample, some users report that the app does not properly tailor workouts to their stated preferences or injuries, and that plan settings reset unexpectedly, leading to frustration.",
+      "evidence_summary": "Three reviews describe customization issues. One user notes that despite selecting to avoid knees, the app still includes squats and lunges (14353095830). Another user reports that the daily workout is inconsistent, focusing on legs every day, and that plan settings keep changing or defaulting without notice (14366479265). A third review mentions not feeling the workout in the intended area (14401657445).",
+      "support_count": 3,
+      "confidence": 0.75,
+      "uncertainty": "Moderate confidence based on the current sample. The reviews are consistent but limited in number. One review (14401657445) has a rating of 4 and is less explicit about customization, but it is included in review_ids because it relates to workout effectiveness.",
+      "conflicting_review_ids": []
+    },
+    {
+      "finding_id": "FINDING-006",
+      "issue_ids": [
+        "ISSUE-006"
+      ],
+      "review_ids": [
+        "14330268991",
+        "14359950060"
+      ],
+      "title": "Marketing and imagery objectify women's bodies and use unrealistic representations",
+      "statement": "Based on the current review sample, some users criticize the app for objectifying women's bodies and using unrealistic, cartoonish imagery in marketing and onboarding, which they find disappointing and contrary to promoting health and strength.",
+      "evidence_summary": "Two reviews express concerns about body image and marketing. One user states the app 'objectifies women’s bodies rather than focusing on health or strength' and mentions unrealistic imagery of women with 'busty, skinny waist, wide hips' (14330268991). Another user complains about 'cheesy AI mockups showing unrealistic images' and 'FAKE AI women used everywhere' (14359950060).",
+      "support_count": 2,
+      "confidence": 0.7,
+      "uncertainty": "Moderate confidence based on the current sample. Only two reviews mention this issue, but they are detailed and consistent. The sample is small, so the prevalence of this concern is uncertain.",
+      "conflicting_review_ids": []
+    }
+  ]
+}

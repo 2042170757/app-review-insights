@@ -1,0 +1,64 @@
+{
+  "evidence_reports": [
+    {
+      "finding_id": "FINDING-001",
+      "support_count": 10,
+      "unique_support_count": 10,
+      "conflicting_count": 0,
+      "evidence_strength": "High",
+      "evidence_limitations": [
+        "deterministic evidence strength based on support count only"
+      ]
+    },
+    {
+      "finding_id": "FINDING-002",
+      "support_count": 4,
+      "unique_support_count": 4,
+      "conflicting_count": 0,
+      "evidence_strength": "High",
+      "evidence_limitations": [
+        "deterministic evidence strength based on support count only"
+      ]
+    },
+    {
+      "finding_id": "FINDING-003",
+      "support_count": 4,
+      "unique_support_count": 4,
+      "conflicting_count": 0,
+      "evidence_strength": "High",
+      "evidence_limitations": [
+        "deterministic evidence strength based on support count only"
+      ]
+    },
+    {
+      "finding_id": "FINDING-004",
+      "support_count": 3,
+      "unique_support_count": 3,
+      "conflicting_count": 0,
+      "evidence_strength": "Medium",
+      "evidence_limitations": [
+        "limited sample size"
+      ]
+    },
+    {
+      "finding_id": "FINDING-005",
+      "support_count": 3,
+      "unique_support_count": 3,
+      "conflicting_count": 0,
+      "evidence_strength": "Medium",
+      "evidence_limitations": [
+        "limited sample size"
+      ]
+    },
+    {
+      "finding_id": "FINDING-006",
+      "support_count": 2,
+      "unique_support_count": 2,
+      "conflicting_count": 0,
+      "evidence_strength": "Medium",
+      "evidence_limitations": [
+        "limited sample size"
+      ]
+    }
+  ]
+}

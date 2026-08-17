@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react'
 
 const DEFAULT_APP_URL = 'https://apps.apple.com/us/app/workout-for-women-home-gym/id839285684'
 const DEFAULT_GOAL = '分析低评分用户对订阅和价格的主要问题'
+const DEMO_APP_URL = DEFAULT_APP_URL
+const DEMO_GOAL = DEFAULT_GOAL
 
 const statusMeta = {
   pending: { symbol: '○', label: 'Pending' },
@@ -47,6 +49,7 @@ const tabs = [
 function App() {
   const [appUrl, setAppUrl] = useState(DEFAULT_APP_URL)
   const [analysisGoal, setAnalysisGoal] = useState(DEFAULT_GOAL)
+  const [runMode, setRunMode] = useState('live')
   const [sourceType, setSourceType] = useState('app_store')
   const [importFile, setImportFile] = useState(null)
   const [importPreview, setImportPreview] = useState(null)
@@ -94,6 +97,16 @@ function App() {
     setResults({})
     setSelectedEntity(null)
     try {
+      if (runMode === 'demo') {
+        const payload = await createDemoRun()
+        setRunId(payload.run_id)
+        setRunState(payload)
+        if (payload.stages?.length) {
+          setSelectedStageId(payload.stages[0].stage)
+        }
+        await refreshResults(payload.run_id)
+        return
+      }
       const response = sourceType === 'app_store' ? await createAppStoreRun() : await createImportRun()
       const payload = await response.json()
       if (!response.ok) {
@@ -106,6 +119,15 @@ function App() {
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  async function createDemoRun() {
+    const response = await fetch('/api/demo/run')
+    const payload = await response.json()
+    if (!response.ok) {
+      throw new Error(formatApiError(payload.detail || 'Unable to load cached demo run'))
+    }
+    return payload
   }
 
   async function createAppStoreRun() {
@@ -139,6 +161,18 @@ function App() {
     setImportFile(null)
     setImportPreview(null)
     setImportError(null)
+  }
+
+  function handleRunModeChange(nextMode) {
+    setRunMode(nextMode)
+    setImportFile(null)
+    setImportPreview(null)
+    setImportError(null)
+    if (nextMode === 'demo') {
+      setSourceType('app_store')
+      setAppUrl(DEMO_APP_URL)
+      setAnalysisGoal(DEMO_GOAL)
+    }
   }
 
   function handleAppUrlChange(value) {
@@ -231,11 +265,12 @@ function App() {
       <section className="control-strip">
         <form onSubmit={startRun} className="run-form">
           <label className="field app-url">
-            <span>{sourceType === 'app_store' ? 'App Store URL' : 'App Context URL'}</span>
+            <span>{runMode === 'demo' ? 'Demo App URL' : sourceType === 'app_store' ? 'App Store URL' : 'App Context URL'}</span>
             <input
               value={appUrl}
               onChange={(event) => handleAppUrlChange(event.target.value)}
               placeholder="https://apps.apple.com/us/app/example/id123"
+              disabled={runMode === 'demo'}
             />
           </label>
           <label className="field goal">
@@ -245,8 +280,32 @@ function App() {
               onChange={(event) => setAnalysisGoal(event.target.value)}
               rows={2}
               placeholder="分析用户评论中的主要产品问题、用户体验问题和改进机会。"
+              disabled={runMode === 'demo'}
             />
           </label>
+          <fieldset className="source-group">
+            <legend>Mode</legend>
+            <label>
+              <input
+                type="radio"
+                name="mode"
+                value="live"
+                checked={runMode === 'live'}
+                onChange={(event) => handleRunModeChange(event.target.value)}
+              />
+              <span>Live Analysis</span>
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="mode"
+                value="demo"
+                checked={runMode === 'demo'}
+                onChange={(event) => handleRunModeChange(event.target.value)}
+              />
+              <span>Cached Demo</span>
+            </label>
+          </fieldset>
           <fieldset className="source-group">
             <legend>Data Source</legend>
             <label>
@@ -256,6 +315,7 @@ function App() {
                 value="app_store"
                 checked={sourceType === 'app_store'}
                 onChange={(event) => handleSourceChange(event.target.value)}
+                disabled={runMode === 'demo'}
               />
               <span>App Store</span>
             </label>
@@ -266,6 +326,7 @@ function App() {
                 value="json"
                 checked={sourceType === 'json'}
                 onChange={(event) => handleSourceChange(event.target.value)}
+                disabled={runMode === 'demo'}
               />
               <span>JSON</span>
             </label>
@@ -276,19 +337,21 @@ function App() {
                 value="csv"
                 checked={sourceType === 'csv'}
                 onChange={(event) => handleSourceChange(event.target.value)}
+                disabled={runMode === 'demo'}
               />
               <span>CSV</span>
             </label>
           </fieldset>
           <div className="actions">
-            <button type="submit" disabled={isSubmitting || isImporting || (sourceType !== 'app_store' && !importPreview?.import_id)}>
-              {isSubmitting ? 'Creating Run...' : '开始分析'}
+            <button type="submit" disabled={isSubmitting || isImporting || (runMode === 'live' && sourceType !== 'app_store' && !importPreview?.import_id)}>
+              {isSubmitting ? 'Creating Run...' : runMode === 'demo' ? 'Load Cached Demo' : '开始分析'}
             </button>
             <button type="button" className="secondary" onClick={() => refreshRun()} disabled={!runId}>
               Refresh
             </button>
           </div>
-          {sourceType !== 'app_store' ? (
+          {runMode === 'demo' ? <DemoModeNotice compact /> : null}
+          {runMode === 'live' && sourceType !== 'app_store' ? (
             <ImportPanel
               sourceType={sourceType}
               importFile={importFile}
@@ -302,8 +365,11 @@ function App() {
         {requestError ? <div className="message error-message">{requestError}</div> : null}
       </section>
 
+      <ModeBanner runState={runState} results={results} runMode={runMode} />
+
       <section className="run-header">
         <Metric label="Run Status" value={runState?.status || 'not_started'} />
+        <Metric label="Mode" value={results.metadata?.data?.display_source || (runMode === 'demo' ? 'Cached / Demo Data' : 'Live Analysis')} />
         <Metric label="Current Stage" value={runState?.current_stage || 'none'} />
         <Metric label="Run ID" value={runState?.run_id || 'none'} mono />
         <Metric label="App ID" value={runState?.app_id || 'unknown'} />
@@ -406,6 +472,42 @@ function ImportPanel({ sourceType, importFile, importPreview, importError, isImp
         ) : null}
         {importPreview ? <ListBlock title="Warnings" items={importPreview.warnings} emphasized /> : null}
       </div>
+    </section>
+  )
+}
+
+function DemoModeNotice({ compact = false }) {
+  return (
+    <section className={compact ? 'demo-notice compact' : 'demo-notice'}>
+      <strong>⚠ Cached / Demo Data</strong>
+      <span>当前结果来自项目内置缓存，仅用于离线演示。切换到 Live Analysis 后，系统会处理新的输入数据。</span>
+      <span>Demo Mode 不会调用 Apify 或 DeepSeek，并非当前实时抓取结果。</span>
+    </section>
+  )
+}
+
+function ModeBanner({ runState, results, runMode }) {
+  const metadata = results.metadata?.data || {}
+  const isDemo = Boolean(runState?.is_demo || metadata.is_demo || runMode === 'demo')
+  if (isDemo) {
+    return (
+      <section className="mode-banner demo-banner">
+        <div>
+          <strong>⚠ Cached / Demo Data</strong>
+          <span>这是项目内置缓存结果，用于离线演示。并非当前实时抓取结果。</span>
+        </div>
+        <dl className="banner-facts">
+          <FragmentPair term="Provider" description={metadata.provider || 'apify'} />
+          <FragmentPair term="Territory" description={metadata.territory || 'US'} />
+          <FragmentPair term="App ID" description={metadata.app_id || runState?.app_id || '839285684'} />
+        </dl>
+      </section>
+    )
+  }
+  return (
+    <section className="mode-banner live-banner">
+      <strong>● Live Analysis</strong>
+      <span>实时分析模式不会自动回退到缓存演示结果。</span>
     </section>
   )
 }

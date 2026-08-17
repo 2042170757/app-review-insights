@@ -1,0 +1,110 @@
+{
+  "versions": [
+    {
+      "version_id": "V1",
+      "name": "Trust and Transparency",
+      "goal": "Build user trust by ensuring clear subscription terms, easy cancellation, and a transparent free tier.",
+      "requirement_ids": [
+        "REQ-001",
+        "REQ-002"
+      ],
+      "rationale": "Both requirements address user trust and transparency around monetization. REQ-001 ensures a clear free tier, and REQ-002 ensures transparent subscription terms and easy cancellation. Together they address the core complaints about paywalls and billing issues.",
+      "risks": [
+        "Potential revenue impact if free tier is too generous",
+        "Potential for increased cancellations if process is too easy"
+      ],
+      "success_metrics": [
+        "Reduction in negative reviews mentioning paywall restrictions",
+        "Increase in user retention for free users",
+        "Reduction in billing-related complaints",
+        "Increase in successful in-app cancellations"
+      ]
+    },
+    {
+      "version_id": "V2",
+      "name": "Content Quality and User Respect",
+      "goal": "Improve content quality and user respect by ensuring human-curated workouts, non-intrusive ads, and respectful imagery.",
+      "requirement_ids": [
+        "REQ-003",
+        "REQ-004",
+        "REQ-006"
+      ],
+      "rationale": "These requirements focus on the user experience beyond monetization. REQ-003 ensures high-quality workout content, REQ-004 ensures non-intrusive ads, and REQ-006 ensures respectful imagery. Together they address complaints about AI-generated content, disruptive ads, and objectifying imagery.",
+      "risks": [
+        "Potential increase in production costs if more human curation is needed",
+        "Potential reduction in ad revenue if ads are less intrusive",
+        "Potential need for new creative assets"
+      ],
+      "success_metrics": [
+        "Reduction in negative reviews mentioning AI content or quality decline",
+        "Increase in user engagement with workout content",
+        "Reduction in negative reviews mentioning ads or redirects",
+        "Increase in session completion rates",
+        "Reduction in negative reviews about imagery",
+        "Increase in positive sentiment regarding brand values"
+      ]
+    },
+    {
+      "version_id": "V3",
+      "name": "Personalization and Consistency",
+      "goal": "Respect user preferences and maintain consistent workout plans to enhance personalization.",
+      "requirement_ids": [
+        "REQ-005"
+      ],
+      "rationale": "This requirement addresses user preferences and plan consistency, which is a distinct theme from content quality and monetization. It ensures the app honors user choices and maintains plan settings, improving user satisfaction.",
+      "risks": [
+        "Potential complexity in personalization logic"
+      ],
+      "success_metrics": [
+        "Reduction in negative reviews about customization issues",
+        "Increase in user satisfaction with workout relevance"
+      ]
+    }
+  ],
+  "roadmap_items": [
+    {
+      "requirement_id": "REQ-001",
+      "version_id": "V1",
+      "priority": "P1",
+      "rationale": "High priority due to strong evidence and direct impact on user trust and retention.",
+      "dependencies": []
+    },
+    {
+      "requirement_id": "REQ-002",
+      "version_id": "V1",
+      "priority": "P1",
+      "rationale": "High priority due to strong evidence and direct impact on user trust and billing complaints.",
+      "dependencies": []
+    },
+    {
+      "requirement_id": "REQ-003",
+      "version_id": "V2",
+      "priority": "P1",
+      "rationale": "High priority due to strong evidence and direct impact on user satisfaction with content.",
+      "dependencies": []
+    },
+    {
+      "requirement_id": "REQ-004",
+      "version_id": "V2",
+      "priority": "P2",
+      "rationale": "Medium priority due to moderate evidence and impact on user experience.",
+      "dependencies": []
+    },
+    {
+      "requirement_id": "REQ-006",
+      "version_id": "V2",
+      "priority": "P2",
+      "rationale": "Medium priority due to moderate evidence and impact on brand perception.",
+      "dependencies": []
+    },
+    {
+      "requirement_id": "REQ-005",
+      "version_id": "V3",
+      "priority": "P2",
+      "rationale": "Medium priority due to moderate evidence and impact on personalization.",
+      "dependencies": []
+    }
+  ],
+  "deferred_requirement_ids": [],
+  "deferred_rationale": {}
+}

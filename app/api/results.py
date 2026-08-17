@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app.demo import DEMO_DISPLAY_SOURCE
 from app.workflow.artifacts import find_run_artifact
 from app.workflow.models import RunState
 
@@ -178,7 +179,11 @@ def metadata_payload(run: RunState) -> dict[str, Any]:
     collection = _stage_by_id(run, "collection")
     import_metadata = run.import_metadata or {}
     imported = run.source_type in {"json", "csv"}
+    demo_metadata = run.demo_metadata or {}
+    is_demo = run.is_demo or run.data_source == "cached_demo"
     display_source = (
+        (DEMO_DISPLAY_SOURCE if is_demo else None)
+        or
         import_metadata.get("display_source")
         or dataset.get("display_source")
         or ("Imported JSON" if run.source_type == "json" else "Imported CSV" if run.source_type == "csv" else None)
@@ -190,20 +195,22 @@ def metadata_payload(run: RunState) -> dict[str, Any]:
             "display_source": display_source or dataset.get("provider") or _summary_value(collection, "provider"),
             "review_source": display_source or dataset.get("provider") or _summary_value(collection, "provider"),
             "app_context": run.app_url,
-            "artifact_source": dataset.get("artifact_source") or ("Uploaded File" if imported else "Run Artifact Snapshot"),
-            "cached_label": dataset.get("cached_label") or (None if imported else "Cached for this Run"),
-            "provider": dataset.get("provider") or _summary_value(collection, "provider"),
+            "artifact_source": "Built-in Demo Cache" if is_demo else dataset.get("artifact_source") or ("Uploaded File" if imported else "Run Artifact Snapshot"),
+            "cached_label": DEMO_DISPLAY_SOURCE if is_demo else dataset.get("cached_label") or (None if imported else "Cached for this Run"),
+            "provider": dataset.get("provider") or demo_metadata.get("source_provider") or _summary_value(collection, "provider"),
             "filename": dataset.get("filename") or import_metadata.get("filename"),
-            "territory": dataset.get("territory") or import_metadata.get("territory") or _summary_value(collection, "territory") or (run.storefront if not imported else None),
-            "app_id": dataset.get("app_id") or _summary_value(collection, "app_id") or run.app_id,
-            "collection_time": dataset.get("retrieved_at") or dataset.get("imported_at") or (collection.completed_at if collection else None),
+            "territory": dataset.get("territory") or import_metadata.get("territory") or demo_metadata.get("territory") or _summary_value(collection, "territory") or (run.storefront if not imported else None),
+            "app_id": dataset.get("app_id") or demo_metadata.get("app_id") or _summary_value(collection, "app_id") or run.app_id,
+            "collection_time": dataset.get("retrieved_at") or demo_metadata.get("collected_at") or dataset.get("imported_at") or (collection.completed_at if collection else None),
             "imported_at": dataset.get("imported_at") or import_metadata.get("imported_at"),
             "requested_limit": dataset.get("requested_limit") or _summary_value(collection, "requested_limit"),
             "record_count": dataset.get("record_count") or import_metadata.get("record_count"),
             "valid_count": dataset.get("valid_count") or import_metadata.get("valid_count"),
             "invalid_count": dataset.get("invalid_count") or import_metadata.get("invalid_count"),
-            "actual_count": dataset.get("actual_count") or _summary_value(collection, "actual_count"),
-            "limitations": dataset.get("limitations") or import_metadata.get("limitations") or _summary_value(collection, "limitations") or [],
+            "actual_count": dataset.get("actual_count") or demo_metadata.get("review_count") or _summary_value(collection, "actual_count"),
+            "limitations": _demo_limitations(demo_metadata) if is_demo else dataset.get("limitations") or import_metadata.get("limitations") or _summary_value(collection, "limitations") or [],
+            "is_demo": is_demo,
+            "mode": demo_metadata.get("mode") if is_demo else None,
         },
         "model": validation.get("metadata", {}),
         "validation": {
@@ -218,8 +225,9 @@ def _base(run: RunState, available: bool) -> dict[str, Any]:
     return {
         "run_id": run.run_id,
         "available": available,
-        "source": "run_artifact_snapshot",
+        "source": "cached_demo" if run.is_demo else "run_artifact_snapshot",
         "run_status": run.status,
+        "is_demo": run.is_demo,
     }
 
 
@@ -453,3 +461,14 @@ def _list_text(value: Any) -> list[str]:
 
 def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def _demo_limitations(metadata: dict[str, Any]) -> list[str]:
+    limitations = [
+        "Cached demo result for offline interview presentation; not a live collection or model run.",
+        "Live Analysis must be selected to process a new app, new review file, or new analysis goal.",
+    ]
+    description = metadata.get("description")
+    if isinstance(description, str) and description and description not in limitations:
+        limitations.append(description)
+    return limitations

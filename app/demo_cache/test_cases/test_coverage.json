@@ -1,0 +1,10 @@
+{
+  "total_requirements": 6,
+  "covered_requirements": 6,
+  "requirement_coverage": 100.0,
+  "total_acceptance_criteria": 19,
+  "covered_acceptance_criteria": 19,
+  "acceptance_criteria_coverage": 100.0,
+  "uncovered_requirement_ids": [],
+  "uncovered_acceptance_criteria_ids": []
+}

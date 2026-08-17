@@ -1,0 +1,133 @@
+{
+  "status": "Success",
+  "passed": true,
+  "errors": [],
+  "warnings": [],
+  "prds": [
+    {
+      "prd_id": "PRD-V1",
+      "version_id": "V1",
+      "title": "Trust and Transparency PRD",
+      "overview": "This PRD aims to build user trust by ensuring clear subscription terms, easy cancellation, and a transparent free tier. It addresses user complaints about paywall restrictions and billing issues, as identified in the validated roadmap version V1.",
+      "problem_statement": "Users who previously used the app for free are frustrated by paywall restrictions that limit access to workouts. Additionally, some users report unexpected charges, difficulty canceling subscriptions, and unclear subscription terms, leading to distrust and negative reviews.",
+      "evidence_summary": "Evidence from FINDING-001 (supporting REQ-001) shows 10 reviews complaining about loss of free access and paywall restrictions. FINDING-002 (supporting REQ-002) shows 4 reviews describing billing issues such as unexpected charges and difficulty canceling. These findings support the need for a clear free tier and transparent subscription terms.",
+      "goals": [
+        "Build user trust by ensuring clear subscription terms, easy cancellation, and a transparent free tier.",
+        "Reduce negative reviews related to paywall restrictions and billing issues.",
+        "Increase user retention among free users."
+      ],
+      "non_goals": [
+        "Do not change the overall monetization strategy or subscription pricing.",
+        "Do not remove all paywalls; only ensure a meaningful free tier exists.",
+        "Do not implement a full refund system or handle individual billing disputes.",
+        "Do not address content quality or ad-related issues (covered in other versions)."
+      ],
+      "requirement_ids": [
+        "REQ-001",
+        "REQ-002"
+      ],
+      "risks": [
+        "Potential revenue impact if free tier is too generous.",
+        "Potential for increased cancellations if process is too easy."
+      ],
+      "success_metrics": [
+        "Reduction in negative reviews mentioning paywall restrictions.",
+        "Increase in user retention for free users.",
+        "Reduction in billing-related complaints.",
+        "Increase in successful in-app cancellations."
+      ],
+      "open_questions": [
+        "What proportion or threshold of workout library access should remain free? (from REQ-001)",
+        "How should the app measure 'successful in-app cancellations'? Should it count only cancellations completed without contacting support?",
+        "What is the target reduction in billing-related complaints? (No numeric target is provided in the evidence.)"
+      ]
+    },
+    {
+      "prd_id": "PRD-V2",
+      "version_id": "V2",
+      "title": "Content Quality and User Respect PRD",
+      "overview": "This PRD aims to improve content quality and user respect by ensuring human-curated workouts, non-intrusive ads, and respectful imagery. It addresses user complaints about AI-generated content, disruptive ads, and objectifying imagery.",
+      "problem_statement": "Users are disappointed with the increased use of AI-generated content, which they perceive as low quality and unrealistic. Intrusive ads and unexpected redirects disrupt the workout experience, and some marketing imagery objectifies women's bodies, contradicting the app's health and strength focus.",
+      "evidence_summary": "Evidence from FINDING-003 (supporting REQ-003) shows 4 reviews mentioning AI content and quality decline. FINDING-004 (supporting REQ-004) shows 3 reviews about intrusive ads and redirects. FINDING-006 (supporting REQ-006) shows 2 reviews criticizing objectifying imagery. These findings support the need for human-curated content, non-intrusive ads, and respectful imagery.",
+      "goals": [
+        "Improve content quality and user respect by ensuring human-curated workouts, non-intrusive ads, and respectful imagery.",
+        "Reduce negative reviews related to AI content, ads, and imagery.",
+        "Increase user engagement with workout content."
+      ],
+      "non_goals": [
+        "Do not remove all ads; only make them non-intrusive.",
+        "Do not eliminate AI entirely; only reduce reliance on AI-generated imagery and ensure human curation.",
+        "Do not change the app's overall aesthetic or brand identity beyond imagery concerns.",
+        "Do not address subscription or billing issues (covered in V1)."
+      ],
+      "requirement_ids": [
+        "REQ-003",
+        "REQ-004",
+        "REQ-006"
+      ],
+      "risks": [
+        "Potential increase in production costs if more human curation is needed.",
+        "Potential reduction in ad revenue if ads are less intrusive.",
+        "Potential need for new creative assets."
+      ],
+      "success_metrics": [
+        "Reduction in negative reviews mentioning AI content or quality decline.",
+        "Increase in user engagement with workout content.",
+        "Reduction in negative reviews mentioning ads or redirects.",
+        "Increase in session completion rates.",
+        "Reduction in negative reviews about imagery.",
+        "Increase in positive sentiment regarding brand values."
+      ],
+      "open_questions": [
+        "What specific metrics will be used to measure 'user engagement with workout content'? (e.g., session length, workout completion rate)",
+        "How should 'positive sentiment regarding brand values' be measured? (e.g., via review sentiment analysis)",
+        "What is the acceptable frequency of ads per workout session? (No evidence-backed threshold is provided.)"
+      ]
+    },
+    {
+      "prd_id": "PRD-V3",
+      "version_id": "V3",
+      "title": "Personalization and Consistency PRD",
+      "overview": "This PRD aims to respect user preferences and maintain consistent workout plans to enhance personalization. It addresses user complaints about the app not honoring their stated preferences and resetting plan settings.",
+      "problem_statement": "Users report that the app does not properly tailor workouts to their stated preferences or injuries, and that plan settings reset unexpectedly, leading to frustration and a lack of trust in the app's personalization.",
+      "evidence_summary": "Evidence from FINDING-005 (supporting REQ-005) shows 3 reviews describing customization issues, such as exercises targeting avoided areas and plan settings changing without consent. This supports the need for respecting user preferences and maintaining consistent plans.",
+      "goals": [
+        "Respect user preferences and maintain consistent workout plans to enhance personalization.",
+        "Reduce negative reviews about customization issues.",
+        "Increase user satisfaction with workout relevance."
+      ],
+      "non_goals": [
+        "Do not implement complex AI-based personalization algorithms.",
+        "Do not change the core workout library or content.",
+        "Do not address subscription or billing issues (covered in V1).",
+        "Do not address ad-related issues (covered in V2)."
+      ],
+      "requirement_ids": [
+        "REQ-005"
+      ],
+      "risks": [
+        "Potential complexity in personalization logic."
+      ],
+      "success_metrics": [
+        "Reduction in negative reviews about customization issues.",
+        "Increase in user satisfaction with workout relevance."
+      ],
+      "open_questions": [
+        "How should 'user satisfaction with workout relevance' be measured? (e.g., via in-app surveys or review analysis)",
+        "What is the acceptable frequency of plan setting resets? (No evidence-backed threshold is provided.)",
+        "Should the app provide a way for users to lock their plan settings? (Not specified in the evidence.)"
+      ]
+    }
+  ],
+  "unknown_version_ids": [],
+  "unknown_requirement_ids": [],
+  "unknown_finding_ids": [],
+  "traceability_errors": [],
+  "evidence_summary_errors": [],
+  "goal_errors": [],
+  "success_metric_errors": [],
+  "implementation_detail_errors": [],
+  "duplicate_prd_ids": [],
+  "unsupported_scope_errors": [],
+  "missing_open_question_errors": []
+}

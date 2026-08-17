@@ -1,0 +1,12 @@
+{
+  "is_demo": true,
+  "mode": "cached_demo",
+  "source_provider": "apify",
+  "territory": "US",
+  "app_id": "839285684",
+  "review_count": 50,
+  "collected_at": "2026-08-17T15:16:29.153631+00:00",
+  "model_provider": "deepseek",
+  "model": "deepseek-v4-flash",
+  "description": "Cached demo result for offline interview presentation."
+}

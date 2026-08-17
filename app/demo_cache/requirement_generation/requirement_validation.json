@@ -1,0 +1,192 @@
+{
+  "status": "Success",
+  "passed": true,
+  "errors": [],
+  "warnings": [],
+  "requirements": [
+    {
+      "requirement_id": "REQ-001",
+      "finding_ids": [
+        "FINDING-001"
+      ],
+      "title": "Provide a clear free tier with a defined set of workouts",
+      "description": "Users who previously used the app for free should be able to access a meaningful set of workouts without paying. The free tier should be clearly communicated so users know what is available without a subscription.",
+      "acceptance_criteria": [
+        "A user without a subscription can access at least 5 distinct workouts.",
+        "The app clearly labels which workouts are free and which require payment.",
+        "Users can complete a free workout without being interrupted by paywall prompts."
+      ],
+      "priority": "P1",
+      "priority_rationale": "Deterministic priority from evidence_strength=High, support_count=10, average_confidence=0.95, uncertainty_penalty=0.5, conflict_penalty=0.0. Impact is not independently scored in Phase 4b, so priority remains conservative.",
+      "risks": [
+        "Potential revenue impact if free tier is too generous."
+      ],
+      "success_metrics": [
+        "Reduction in negative reviews mentioning paywall restrictions.",
+        "Increase in user retention for free users."
+      ],
+      "uncertainty": "High confidence based on 10 supporting reviews, but sample may not represent all users.",
+      "source_review_ids": [
+        "14424309790",
+        "14423833481",
+        "14421357217",
+        "14408658475",
+        "14381025970",
+        "14334995806",
+        "14320776504",
+        "14314433809",
+        "14306466803",
+        "14303029084"
+      ]
+    },
+    {
+      "requirement_id": "REQ-002",
+      "finding_ids": [
+        "FINDING-002"
+      ],
+      "title": "Ensure transparent subscription terms and easy cancellation",
+      "description": "Users should be able to understand subscription terms before purchase, including pricing, renewal dates, and cancellation process. The app should provide clear reminders before trial ends and make it easy to cancel without contacting support.",
+      "acceptance_criteria": [
+        "Subscription details, including price and renewal period, are visible in the app before purchase.",
+        "Users receive a reminder at least 24 hours before a trial ends.",
+        "Users can cancel a subscription directly within the app without needing to contact support.",
+        "After cancellation, users do not receive unexpected charges."
+      ],
+      "priority": "P1",
+      "priority_rationale": "Deterministic priority from evidence_strength=High, support_count=4, average_confidence=0.90, uncertainty_penalty=0.0, conflict_penalty=0.0. Impact is not independently scored in Phase 4b, so priority remains conservative.",
+      "risks": [
+        "Potential for increased cancellations if process is too easy."
+      ],
+      "success_metrics": [
+        "Reduction in billing-related complaints.",
+        "Increase in successful in-app cancellations."
+      ],
+      "uncertainty": "Moderate to high confidence based on 4 supporting reviews; details vary.",
+      "source_review_ids": [
+        "14397715067",
+        "14342854364",
+        "14297707993",
+        "14329131554"
+      ]
+    },
+    {
+      "requirement_id": "REQ-003",
+      "finding_ids": [
+        "FINDING-003"
+      ],
+      "title": "Maintain high-quality, human-curated workout content",
+      "description": "Users expect workout content to be creative, varied, and realistic. The app should avoid relying heavily on AI-generated imagery and ensure that workouts are designed with user experience in mind, not just automated generation.",
+      "acceptance_criteria": [
+        "Workout descriptions and images are realistic and not described as 'AI slop' or 'cheesy AI mockups'.",
+        "Workouts are varied and not repetitive across sessions.",
+        "The app does not use unrealistic or objectifying imagery in workout content."
+      ],
+      "priority": "P1",
+      "priority_rationale": "Deterministic priority from evidence_strength=High, support_count=4, average_confidence=0.85, uncertainty_penalty=0.0, conflict_penalty=0.0. Impact is not independently scored in Phase 4b, so priority remains conservative.",
+      "risks": [
+        "Potential increase in production costs if more human curation is needed."
+      ],
+      "success_metrics": [
+        "Reduction in negative reviews mentioning AI content or quality decline.",
+        "Increase in user engagement with workout content."
+      ],
+      "uncertainty": "Moderate confidence based on 4 supporting reviews; sample small.",
+      "source_review_ids": [
+        "14359950060",
+        "14367493057",
+        "14397715067",
+        "14314433809"
+      ]
+    },
+    {
+      "requirement_id": "REQ-004",
+      "finding_ids": [
+        "FINDING-004"
+      ],
+      "title": "Provide non-intrusive ads and prevent unexpected redirects",
+      "description": "Ads should not disrupt the workout experience. Users should be able to easily dismiss ads and continue their workout. The app should not redirect users to external websites during workouts.",
+      "acceptance_criteria": [
+        "Ads have a clear and easily accessible close button.",
+        "After an ad is dismissed, the user returns to the workout without further interruption.",
+        "The app does not redirect to external websites during a workout session."
+      ],
+      "priority": "P2",
+      "priority_rationale": "Deterministic priority from evidence_strength=Medium, support_count=3, average_confidence=0.80, uncertainty_penalty=0.5, conflict_penalty=0.0. Impact is not independently scored in Phase 4b, so priority remains conservative.",
+      "risks": [
+        "Potential reduction in ad revenue if ads are less intrusive."
+      ],
+      "success_metrics": [
+        "Reduction in negative reviews mentioning ads or redirects.",
+        "Increase in session completion rates."
+      ],
+      "uncertainty": "Moderate confidence based on 3 supporting reviews; sample limited.",
+      "source_review_ids": [
+        "14411802642",
+        "14314433809",
+        "14359950060"
+      ]
+    },
+    {
+      "requirement_id": "REQ-005",
+      "finding_ids": [
+        "FINDING-005"
+      ],
+      "title": "Respect user preferences and maintain consistent workout plans",
+      "description": "The app should honor user-selected preferences, such as avoiding certain body areas, and should not reset plan settings without user consent. Workout plans should be consistent and aligned with user goals.",
+      "acceptance_criteria": [
+        "If a user indicates a preference to avoid a specific body area, the app does not include exercises targeting that area.",
+        "Plan settings remain as the user set them across sessions unless the user changes them.",
+        "The app provides a way for users to review and adjust their plan settings at any time."
+      ],
+      "priority": "P2",
+      "priority_rationale": "Deterministic priority from evidence_strength=Medium, support_count=3, average_confidence=0.75, uncertainty_penalty=0.5, conflict_penalty=0.0. Impact is not independently scored in Phase 4b, so priority remains conservative.",
+      "risks": [
+        "Potential complexity in personalization logic."
+      ],
+      "success_metrics": [
+        "Reduction in negative reviews about customization issues.",
+        "Increase in user satisfaction with workout relevance."
+      ],
+      "uncertainty": "Moderate confidence based on 3 supporting reviews; sample limited.",
+      "source_review_ids": [
+        "14353095830",
+        "14366479265",
+        "14401657445"
+      ]
+    },
+    {
+      "requirement_id": "REQ-006",
+      "finding_ids": [
+        "FINDING-006"
+      ],
+      "title": "Use respectful and realistic imagery in marketing and onboarding",
+      "description": "Marketing and onboarding materials should promote health and strength without objectifying women's bodies or using unrealistic, cartoonish representations. Imagery should be inclusive and realistic.",
+      "acceptance_criteria": [
+        "Marketing and onboarding images do not depict unrealistic body proportions or objectify women.",
+        "Imagery focuses on fitness, strength, and health rather than sexualization.",
+        "Users do not describe the imagery as 'cheesy' or 'fake'."
+      ],
+      "priority": "P2",
+      "priority_rationale": "Deterministic priority from evidence_strength=Medium, support_count=2, average_confidence=0.70, uncertainty_penalty=0.5, conflict_penalty=0.0. Impact is not independently scored in Phase 4b, so priority remains conservative.",
+      "risks": [
+        "Potential need for new creative assets."
+      ],
+      "success_metrics": [
+        "Reduction in negative reviews about imagery.",
+        "Increase in positive sentiment regarding brand values."
+      ],
+      "uncertainty": "Moderate confidence based on 2 supporting reviews; sample small.",
+      "source_review_ids": [
+        "14330268991",
+        "14359950060"
+      ]
+    }
+  ],
+  "unknown_finding_ids": [],
+  "ineligible_finding_ids": [],
+  "traceability_errors": [],
+  "acceptance_criteria_errors": [],
+  "implementation_detail_errors": [],
+  "implementation_detail_warnings": [],
+  "priority_errors": []
+}

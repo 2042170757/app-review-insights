@@ -7,6 +7,7 @@ import time
 from urllib.parse import urlparse
 from uuid import uuid4
 
+from app.demo import DEMO_RUN_ID_PREFIX, create_demo_run_state, load_demo_cache
 from app.url_resolver import AppStoreUrlError, parse_app_store_url
 from app.imports import ImportedDataset
 from app.workflow.models import (
@@ -123,6 +124,13 @@ class WorkflowOrchestrator:
         with self._lock:
             self._runs[run.run_id] = run
             self._run_import_paths[run.run_id] = str(dataset.path)
+        return run
+
+    def create_demo_run(self) -> RunState:
+        cache = load_demo_cache()
+        run = create_demo_run_state(run_id=f"{DEMO_RUN_ID_PREFIX}{uuid4()}", cache=cache)
+        with self._lock:
+            self._runs[run.run_id] = run
         return run
 
     def get_run(self, run_id: str) -> RunState:

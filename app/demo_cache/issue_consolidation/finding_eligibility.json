@@ -1,0 +1,42 @@
+{
+  "generated_at": "2026-08-17T15:17:00.989687+00:00",
+  "is_deterministic": true,
+  "eligibility": [
+    {
+      "issue_id": "ISSUE-001",
+      "issue_type": "problem",
+      "eligible_for_finding": true,
+      "reason": "Problem issues are eligible for downstream Finding generation."
+    },
+    {
+      "issue_id": "ISSUE-002",
+      "issue_type": "problem",
+      "eligible_for_finding": true,
+      "reason": "Problem issues are eligible for downstream Finding generation."
+    },
+    {
+      "issue_id": "ISSUE-003",
+      "issue_type": "problem",
+      "eligible_for_finding": true,
+      "reason": "Problem issues are eligible for downstream Finding generation."
+    },
+    {
+      "issue_id": "ISSUE-004",
+      "issue_type": "problem",
+      "eligible_for_finding": true,
+      "reason": "Problem issues are eligible for downstream Finding generation."
+    },
+    {
+      "issue_id": "ISSUE-005",
+      "issue_type": "problem",
+      "eligible_for_finding": true,
+      "reason": "Problem issues are eligible for downstream Finding generation."
+    },
+    {
+      "issue_id": "ISSUE-006",
+      "issue_type": "problem",
+      "eligible_for_finding": true,
+      "reason": "Problem issues are eligible for downstream Finding generation."
+    }
+  ]
+}

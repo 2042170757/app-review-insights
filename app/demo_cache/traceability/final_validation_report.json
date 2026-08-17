@@ -1,0 +1,180 @@
+{
+  "forward_traceability": "PASS",
+  "backward_traceability": "PASS",
+  "artifact_consistency": "PASS",
+  "evidence_traceability": "PASS",
+  "statistics_model_separation": "PASS",
+  "failure_state_audit": "PASS",
+  "uncertainty_conflict_audit": "PASS",
+  "ai_deterministic_boundary": "PASS",
+  "generalization": "PASS",
+  "exam_requirement_coverage": 95.0,
+  "downstream_safety": "PASS",
+  "critical_issues": [],
+  "non_blocking_issues": [
+    "Unknown analysis goal generalization is verified by CLI/request metadata tests, not by a live model call in Phase 8.",
+    "Conflicting and insufficient evidence fixtures are retained for deterministic processing; semantic interpretation remains model-driven."
+  ],
+  "missing_final_deliverables": [
+    "R. UI readiness"
+  ],
+  "counts": {
+    "reviews": 50,
+    "topics": 6,
+    "issues": 6,
+    "findings": 6,
+    "requirements": 6,
+    "versions": 3,
+    "prds": 3,
+    "acceptance_criteria": 19,
+    "test_cases": 6
+  },
+  "exam_items": {
+    "A. Real data source": "PASS",
+    "B. US Review": "PASS",
+    "C. Data cleaning": "PASS",
+    "D. Dynamic semantic analysis": "PASS",
+    "E. Evidence": "PASS",
+    "F. Uncertainty": "PASS",
+    "G. Conflict": "PASS",
+    "H. Requirement": "PASS",
+    "I. Version": "PASS",
+    "J. PRD": "PASS",
+    "K. Test Case": "PASS",
+    "L. Traceability": "PASS",
+    "M. JSON/CSV Import": "PASS",
+    "N. Unknown App Generalization": "PASS",
+    "O. Unknown Goal Generalization": "PASS",
+    "P. Mixed Language": "PASS",
+    "Q. Failure Handling": "PASS",
+    "R. UI readiness": "MISSING",
+    "S. Model/Provider documentation": "PASS",
+    "T. Git history": "PASS"
+  },
+  "model_registry": [
+    {
+      "task": "Topic Discovery",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "configuration": {
+        "thinking": {
+          "type": "disabled"
+        },
+        "max_tokens": 3000,
+        "temperature": 0.2,
+        "stream": false,
+        "timeout_seconds": 60,
+        "response_format": {
+          "type": "json_object"
+        }
+      }
+    },
+    {
+      "task": "Issue Consolidation",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "configuration": {
+        "thinking": {
+          "type": "disabled"
+        },
+        "max_tokens": 3000,
+        "temperature": 0.2,
+        "stream": false,
+        "timeout_seconds": 60,
+        "response_format": {
+          "type": "json_object"
+        }
+      }
+    },
+    {
+      "task": "Finding Generation",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "configuration": {
+        "thinking": {
+          "type": "disabled"
+        },
+        "max_tokens": 3000,
+        "temperature": 0.2,
+        "stream": false,
+        "timeout_seconds": 60,
+        "response_format": {
+          "type": "json_object"
+        }
+      }
+    },
+    {
+      "task": "Requirement Generation",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "configuration": {
+        "thinking": {
+          "type": "disabled"
+        },
+        "max_tokens": 3000,
+        "temperature": 0.2,
+        "stream": false,
+        "timeout_seconds": 60,
+        "response_format": {
+          "type": "json_object"
+        }
+      }
+    },
+    {
+      "task": "Roadmap Planning",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "configuration": {
+        "thinking": {
+          "type": "disabled"
+        },
+        "max_tokens": 3000,
+        "temperature": 0.2,
+        "stream": false,
+        "timeout_seconds": 60,
+        "response_format": {
+          "type": "json_object"
+        }
+      }
+    },
+    {
+      "task": "PRD Generation",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "configuration": {
+        "thinking": {
+          "type": "disabled"
+        },
+        "max_tokens": 3000,
+        "temperature": 0.2,
+        "stream": false,
+        "timeout_seconds": 60,
+        "response_format": {
+          "type": "json_object"
+        }
+      }
+    },
+    {
+      "task": "Test Case Generation",
+      "provider": "deepseek",
+      "model": "deepseek-v4-flash",
+      "configuration": {
+        "thinking": {
+          "type": "disabled"
+        },
+        "max_tokens": 3000,
+        "temperature": 0.2,
+        "stream": false,
+        "timeout_seconds": 60,
+        "response_format": {
+          "type": "json_object"
+        }
+      }
+    }
+  ],
+  "runtime_validation_status": "pass",
+  "submission_validation_status": "pending",
+  "submission_blockers": [
+    "R. UI readiness"
+  ]
+}
