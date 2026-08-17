@@ -25,6 +25,8 @@ STATUS_SUCCESS_METRIC_INVALID = "Success Metric Invalid"
 STATUS_PROHIBITED_IMPLEMENTATION_DETAIL = "Prohibited Implementation Detail"
 STATUS_DUPLICATE_PRD_ID = "Duplicate PRD ID"
 STATUS_EMPTY_PRDS = "Empty PRDs"
+STATUS_UNSUPPORTED_PRODUCT_DIRECTION = "Unsupported Product Direction"
+STATUS_MISSING_OPEN_QUESTION = "Missing Open Question"
 
 TECHNICAL_TERMS = {
     "react",
@@ -69,6 +71,8 @@ class PRDValidationResult:
     success_metric_errors: list[str] = field(default_factory=list)
     implementation_detail_errors: list[str] = field(default_factory=list)
     duplicate_prd_ids: list[str] = field(default_factory=list)
+    unsupported_scope_errors: list[str] = field(default_factory=list)
+    missing_open_question_errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -151,6 +155,8 @@ def validate_prd_payload(
     goal_errors: list[str] = []
     metric_errors: list[str] = []
     implementation_errors: list[str] = []
+    unsupported_scope_errors: list[str] = []
+    missing_open_question_errors: list[str] = []
 
     for index, raw_prd in enumerate(raw_prds):
         prefix = f"prds[{index}]"
@@ -206,6 +212,12 @@ def validate_prd_payload(
             if not requirement:
                 unknown_requirement_ids.add(requirement_id)
                 continue
+            _validate_unsupported_scope(
+                prefix=f"{prefix}.{requirement_id}",
+                prd_text=" ".join([title, overview, problem_statement, *goals]),
+                requirement=requirement,
+                unsupported_scope_errors=unsupported_scope_errors,
+            )
             requirement_finding_ids = _list_text(requirement.get("finding_ids"))
             if not requirement_finding_ids:
                 traceability_errors.append(f"{prefix}.{requirement_id}: no finding_ids")
@@ -236,9 +248,24 @@ def validate_prd_payload(
                 implementation_errors.append(
                     f"{prefix}.non_goals[{non_goal_index}]: contains implementation detail"
                 )
+        implementation_text = " ".join(
+            [title, overview, problem_statement, evidence_summary, *goals, *risks, *success_metrics]
+        )
+        if _contains_technical_detail(implementation_text):
+            implementation_errors.append(f"{prefix}: contains implementation detail")
         for metric_index, metric in enumerate(success_metrics):
             if not _is_measurable_metric(metric):
                 metric_errors.append(f"{prefix}.success_metrics[{metric_index}]: not measurable")
+            if _has_unsupported_numeric_target(metric):
+                metric_errors.append(
+                    f"{prefix}.success_metrics[{metric_index}]: contains unsupported numeric target"
+                )
+        _validate_required_open_questions(
+            prefix=prefix,
+            requirement_ids=requirement_ids,
+            open_questions=open_questions,
+            errors=missing_open_question_errors,
+        )
 
         if (
             prd_id
@@ -299,6 +326,8 @@ def validate_prd_payload(
             traceability_errors,
             traceability_errors=traceability_errors,
         )
+    if errors:
+        return _fail(STATUS_SCHEMA_VALIDATION_FAILED, errors)
     if goal_errors:
         return _fail(STATUS_GOAL_INCOHERENCE, goal_errors, goal_errors=goal_errors)
     if evidence_summary_errors:
@@ -319,8 +348,18 @@ def validate_prd_payload(
             implementation_errors,
             implementation_detail_errors=implementation_errors,
         )
-    if errors:
-        return _fail(STATUS_SCHEMA_VALIDATION_FAILED, errors)
+    if unsupported_scope_errors:
+        return _fail(
+            STATUS_UNSUPPORTED_PRODUCT_DIRECTION,
+            unsupported_scope_errors,
+            unsupported_scope_errors=unsupported_scope_errors,
+        )
+    if missing_open_question_errors:
+        return _fail(
+            STATUS_MISSING_OPEN_QUESTION,
+            missing_open_question_errors,
+            missing_open_question_errors=missing_open_question_errors,
+        )
     return PRDValidationResult(status=STATUS_SUCCESS, passed=True, prds=prds)
 
 
@@ -359,6 +398,58 @@ def _validate_finding_chain(
         traceability_errors.append(f"{prefix}: finding/issue review evidence has no overlap")
 
 
+def _validate_unsupported_scope(
+    *,
+    prefix: str,
+    prd_text: str,
+    requirement: dict[str, Any],
+    unsupported_scope_errors: list[str],
+) -> None:
+    source_text = " ".join(
+        [
+            _text(requirement.get("title")),
+            _text(requirement.get("description")),
+            " ".join(_list_text(requirement.get("acceptance_criteria"))),
+            " ".join(_list_text(requirement.get("success_metrics"))),
+            " ".join(_list_text(requirement.get("risks"))),
+        ]
+    )
+    requirement_domains = _domain_tokens(source_text)
+    prd_domains = _domain_tokens(prd_text)
+    if requirement_domains and prd_domains and not requirement_domains.intersection(prd_domains):
+        unsupported_scope_errors.append(f"{prefix}: PRD scope does not match requirement domain")
+    unsupported_phrases = {
+        "membership tier": "membership tier",
+        "loyalty program": "loyalty program",
+        "social network": "social network",
+        "marketplace": "marketplace",
+        "ai coach": "ai coach",
+    }
+    normalized = prd_text.lower()
+    for phrase in unsupported_phrases:
+        if phrase in normalized and phrase not in source_text.lower():
+            unsupported_scope_errors.append(f"{prefix}: unsupported product direction {phrase!r}")
+
+
+def _validate_required_open_questions(
+    *,
+    prefix: str,
+    requirement_ids: list[str],
+    open_questions: list[str],
+    errors: list[str],
+) -> None:
+    question_text = " ".join(open_questions).lower()
+    required_terms_by_requirement = {
+        "REQ-001": ["proportion", "threshold", "free access", "free tier", "library"],
+        "REQ-007": ["cadence", "frequency", "refresh", "update", "monthly"],
+        "REQ-008": ["support channel", "channel", "email", "chat", "support"],
+    }
+    for requirement_id in requirement_ids:
+        terms = required_terms_by_requirement.get(requirement_id)
+        if terms and not any(term in question_text for term in terms):
+            errors.append(f"{prefix}.open_questions: missing product decision question for {requirement_id}")
+
+
 def _fail(
     status: str,
     errors: list[str],
@@ -372,6 +463,8 @@ def _fail(
     success_metric_errors: list[str] | None = None,
     implementation_detail_errors: list[str] | None = None,
     duplicate_prd_ids: list[str] | None = None,
+    unsupported_scope_errors: list[str] | None = None,
+    missing_open_question_errors: list[str] | None = None,
 ) -> PRDValidationResult:
     return PRDValidationResult(
         status=status,
@@ -386,6 +479,8 @@ def _fail(
         success_metric_errors=success_metric_errors or [],
         implementation_detail_errors=implementation_detail_errors or [],
         duplicate_prd_ids=duplicate_prd_ids or [],
+        unsupported_scope_errors=unsupported_scope_errors or [],
+        missing_open_question_errors=missing_open_question_errors or [],
     )
 
 
@@ -436,6 +531,11 @@ def _is_measurable_metric(value: str) -> bool:
     if normalized in GENERIC_METRICS:
         return False
     return bool(re.search(r"\d|%|rate|count|time|retention|conversion|decrease|increase|reduction|complaints|reviews", normalized))
+
+
+def _has_unsupported_numeric_target(value: str) -> bool:
+    normalized = value.lower()
+    return bool(re.search(r"\b\d+(\.\d+)?\s*%", normalized))
 
 
 def _list_text(value: Any) -> list[str]:

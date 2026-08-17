@@ -12,6 +12,8 @@ from app.prd_validator import (
     STATUS_SUCCESS,
     STATUS_SUCCESS_METRIC_INVALID,
     STATUS_TRACEABILITY_MISMATCH,
+    STATUS_MISSING_OPEN_QUESTION,
+    STATUS_UNSUPPORTED_PRODUCT_DIRECTION,
     STATUS_UNKNOWN_FINDING_ID,
     STATUS_UNKNOWN_REQUIREMENT_ID,
     STATUS_UNKNOWN_VERSION_ID,
@@ -123,6 +125,30 @@ class PRDValidatorTests(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertEqual(result.status, STATUS_SUCCESS_METRIC_INVALID)
 
+    def test_success_metric_with_unsupported_numeric_target(self) -> None:
+        payload = _payload()
+        payload["prds"][0]["success_metrics"] = ["Decrease subscription complaints by 10%."]
+        result = _validate(payload)
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_SUCCESS_METRIC_INVALID)
+
+    def test_unsupported_product_direction(self) -> None:
+        payload = _payload()
+        payload["prds"][0]["overview"] = "Launch a new membership tier and loyalty program."
+        result = _validate(payload)
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_UNSUPPORTED_PRODUCT_DIRECTION)
+
+    def test_missing_open_question_for_uncertain_product_parameter(self) -> None:
+        payload = _payload()
+        payload["prds"][0]["open_questions"] = []
+        result = _validate(payload, requirements_by_id=_requirements_by_id_with_text())
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_MISSING_OPEN_QUESTION)
+
     def test_non_goal_contains_technical_detail(self) -> None:
         payload = _payload()
         payload["prds"][0]["non_goals"] = ["Do not build a React component in this phase."]
@@ -152,8 +178,8 @@ class PRDValidatorTests(unittest.TestCase):
                 "non_goals": [],
                 "requirement_ids": ["REQ-003"],
                 "risks": [],
-                "success_metrics": ["Decrease content-related complaints by 10%."],
-                "open_questions": [],
+                "success_metrics": ["Decrease content-related complaint rate."],
+                "open_questions": ["What proportion of the library should remain free?"],
             }
         )
         result = _validate(payload)
@@ -224,8 +250,8 @@ def _payload() -> dict:
                 "non_goals": ["Do not expand scope beyond validated subscription requirements."],
                 "requirement_ids": ["REQ-001", "REQ-002"],
                 "risks": ["Revenue impact requires product review."],
-                "success_metrics": ["Decrease subscription complaints by 10%."],
-                "open_questions": [],
+                "success_metrics": ["Decrease subscription complaint rate."],
+                "open_questions": ["What proportion of the library should remain free?"],
             }
         ]
     }
@@ -236,6 +262,32 @@ def _requirements_by_id() -> dict:
         "REQ-001": {"requirement_id": "REQ-001", "finding_ids": ["FINDING-001"]},
         "REQ-002": {"requirement_id": "REQ-002", "finding_ids": ["FINDING-001"]},
         "REQ-003": {"requirement_id": "REQ-003", "finding_ids": ["FINDING-002"]},
+    }
+
+
+def _requirements_by_id_with_text() -> dict:
+    return {
+        "REQ-001": {
+            "requirement_id": "REQ-001",
+            "finding_ids": ["FINDING-001"],
+            "title": "Provide free access options",
+            "description": "The product should offer free access without deciding the exact library threshold.",
+            "acceptance_criteria": ["Free access behavior is described for users."],
+        },
+        "REQ-002": {
+            "requirement_id": "REQ-002",
+            "finding_ids": ["FINDING-001"],
+            "title": "Clarify subscription billing",
+            "description": "The product should explain subscription billing.",
+            "acceptance_criteria": ["Billing terms are clear."],
+        },
+        "REQ-003": {
+            "requirement_id": "REQ-003",
+            "finding_ids": ["FINDING-002"],
+            "title": "Improve workout content",
+            "description": "The product should improve workout content.",
+            "acceptance_criteria": ["Content quality is improved."],
+        },
     }
 
 

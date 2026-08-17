@@ -1,4 +1,4 @@
-"""Mock PRD generation orchestration for Phase 6a."""
+"""PRD generation orchestration for mock and production LLM providers."""
 
 from __future__ import annotations
 
@@ -9,7 +9,15 @@ from pathlib import Path
 from typing import Any
 
 from app.issue_consolidation import DEFAULT_ANALYSIS_DIR
-from app.llm.base import LLMProvider, LLMRequest
+from app.llm.base import (
+    LLMProvider,
+    LLMRequest,
+    MissingAPIKeyError,
+    ModelAuthenticationError,
+    ModelRateLimitError,
+    ModelRequestError,
+    ModelTimeoutError,
+)
 from app.llm.mock_provider import MockLLMProvider
 from app.prd_validator import (
     PRDValidationResult,
@@ -25,6 +33,34 @@ STATUS_SUCCESS = "Success"
 STATUS_INPUT_VALIDATION_FAILED = "Input Validation Failed"
 
 
+SYSTEM_PROMPT = """You are generating Product Requirements Documents from validated Roadmap Versions.
+
+Rules:
+1. The current task is PRD Generation.
+2. Use only the input Versions, Requirements, Findings, and Evidence.
+3. Do not create new Requirements.
+4. Do not create new Findings.
+5. Do not create new Issues.
+6. Do not change Requirement priority.
+7. Do not change Version requirement_ids.
+8. Do not change the Roadmap.
+9. Each PRD must align with its Version goal.
+10. Each PRD must include Non-Goals.
+11. Each PRD must preserve the Evidence Scope.
+12. Product parameters not directly decided by Evidence must be placed in open_questions.
+13. Do not present assumptions as evidence-backed facts.
+14. Do not add unsupported product capabilities.
+15. Do not generate technical architecture.
+16. Do not specify React, Vue, database, API, endpoint, code files, or implementation structure.
+17. Do not generate Test Cases.
+18. Do not generate a new Roadmap.
+19. Success Metrics must be measurable but must not invent numeric targets unless provided in the input.
+20. evidence_summary must cite related requirement_id or finding_id values.
+21. If a Version includes required_open_questions, every listed product decision must be represented in that PRD's open_questions.
+
+Return only JSON matching the existing PRD schema."""
+
+
 @dataclass
 class PRDGenerationResult:
     generation_status: str
@@ -38,6 +74,7 @@ class PRDGenerationResult:
     saved_paths: dict[str, str]
     extracted_json: str | None = None
     error: str | None = None
+    response_metadata: dict[str, Any] | None = None
     is_mock: bool = True
 
 
@@ -53,6 +90,7 @@ def generate_prds(
     topics: list[dict[str, Any]],
     reviews: list[dict[str, Any]],
     provider: LLMProvider,
+    evidence_report: dict[str, Any] | None = None,
     analysis_goal: str = DEFAULT_PRD_GOAL,
     output_dir: Path = DEFAULT_ANALYSIS_DIR,
     is_mock: bool = True,
@@ -70,20 +108,25 @@ def generate_prds(
             is_mock,
         )
 
-    request = LLMRequest(
-        system_prompt="Phase 6a mock PRD generation. Do not call a production model.",
-        user_prompt=json.dumps(
-            {
-                "analysis_goal": analysis_goal,
-                "validated_versions": roadmap.get("versions", []),
-                "validated_requirements": requirements,
-                "note": "Mock-only PRD generation for schema and validator coverage.",
-            },
-            ensure_ascii=False,
-        ),
+    request = build_prd_request(
+        requirements=requirements,
+        roadmap=roadmap,
+        findings=findings,
+        evidence_report=evidence_report or {},
         analysis_goal=analysis_goal,
     )
-    response = provider.generate(request)
+    try:
+        response = provider.generate(request)
+    except MissingAPIKeyError as exc:
+        return create_failure_result("Missing API Key", str(exc), provider, analysis_goal, output_dir, is_mock)
+    except ModelAuthenticationError as exc:
+        return create_failure_result("Authentication Error", str(exc), provider, analysis_goal, output_dir, is_mock)
+    except ModelRateLimitError as exc:
+        return create_failure_result("Rate Limit", str(exc), provider, analysis_goal, output_dir, is_mock)
+    except ModelTimeoutError as exc:
+        return create_failure_result("Timeout", str(exc), provider, analysis_goal, output_dir, is_mock)
+    except ModelRequestError as exc:
+        return create_failure_result("Model Request Error", str(exc), provider, analysis_goal, output_dir, is_mock)
     extracted_json = extract_json_text(response.raw_text)
     validation = validate_prd_output(
         extracted_json,
@@ -113,10 +156,109 @@ def generate_prds(
         analysis_goal=analysis_goal,
         saved_paths={},
         extracted_json=extracted_json,
+        response_metadata=response.metadata,
         is_mock=is_mock,
     )
     save_prd_outputs(result, output_dir=output_dir)
     return result
+
+
+def build_prd_request(
+    *,
+    requirements: list[dict[str, Any]],
+    roadmap: dict[str, Any],
+    findings: list[dict[str, Any]],
+    evidence_report: dict[str, Any],
+    analysis_goal: str,
+) -> LLMRequest:
+    requirements_by_id = _by_id(requirements, "requirement_id")
+    findings_by_id = _by_id(findings, "finding_id")
+    evidence_reports_by_id = _evidence_reports_by_id(evidence_report)
+    version_payload = []
+    for version in roadmap.get("versions", []):
+        version_id = version.get("version_id")
+        if not isinstance(version_id, str) or version_id == "Deferred":
+            continue
+        requirement_ids = [
+            requirement_id
+            for requirement_id in version.get("requirement_ids", [])
+            if isinstance(requirement_id, str) and requirement_id in requirements_by_id
+        ]
+        version_requirements = []
+        for requirement_id in requirement_ids:
+            requirement = requirements_by_id[requirement_id]
+            finding_ids = [
+                finding_id
+                for finding_id in requirement.get("finding_ids", [])
+                if isinstance(finding_id, str)
+            ]
+            version_requirements.append(
+                {
+                    "requirement_id": requirement_id,
+                    "title": requirement.get("title"),
+                    "description": requirement.get("description"),
+                    "acceptance_criteria": requirement.get("acceptance_criteria"),
+                    "priority": requirement.get("priority"),
+                    "risks": requirement.get("risks"),
+                    "success_metrics": requirement.get("success_metrics"),
+                    "uncertainty": requirement.get("uncertainty"),
+                    "source_review_ids": requirement.get("source_review_ids"),
+                    "findings": [
+                        {
+                            **findings_by_id[finding_id],
+                            "evidence_report": evidence_reports_by_id.get(finding_id),
+                        }
+                        for finding_id in finding_ids
+                        if finding_id in findings_by_id
+                    ],
+                }
+            )
+        version_payload.append(
+            {
+                "version_id": version_id,
+                "name": version.get("name"),
+                "goal": version.get("goal"),
+                "requirement_ids": requirement_ids,
+                "rationale": version.get("rationale"),
+                "risks": version.get("risks"),
+                "success_metrics": version.get("success_metrics"),
+                "required_open_questions": _required_open_questions_for_requirements(requirement_ids),
+                "requirements": version_requirements,
+            }
+        )
+    user_prompt = json.dumps(
+        {
+            "analysis_goal": analysis_goal,
+            "validated_versions": version_payload,
+            "valid_version_ids": [version["version_id"] for version in version_payload],
+            "required_output_schema": {
+                "prds": [
+                    {
+                        "prd_id": "PRD-V1",
+                        "version_id": "V1",
+                        "title": "string",
+                        "overview": "string",
+                        "problem_statement": "string",
+                        "evidence_summary": "must cite REQ/FINDING ids",
+                        "goals": ["string"],
+                        "non_goals": ["string"],
+                        "requirement_ids": ["must exactly match Version requirement_ids"],
+                        "risks": [],
+                        "success_metrics": ["measurable metric without invented numeric target"],
+                        "open_questions": ["questions for unsupported product decisions"],
+                    }
+                ]
+            },
+            "open_question_guidance": {
+                "REQ-001": "The exact free access proportion or threshold should remain an open question if not evidence-backed.",
+                "REQ-007": "The content refresh cadence, frequency, or timing should remain an open question if not evidence-backed.",
+                "REQ-008": "The specific support channels should remain an open question if not evidence-backed.",
+            },
+        },
+        ensure_ascii=False,
+        indent=2,
+    )
+    return LLMRequest(system_prompt=SYSTEM_PROMPT, user_prompt=user_prompt, analysis_goal=analysis_goal)
 
 
 def build_default_mock_output(
@@ -218,6 +360,7 @@ def save_prd_outputs(
                 "generation_status": result.generation_status,
                 "raw_output": result.raw_output,
                 "extracted_json": result.extracted_json,
+                "response_metadata": result.response_metadata or {},
                 "error": result.error,
             },
             ensure_ascii=False,
@@ -250,6 +393,32 @@ def _open_questions_for_requirements(requirement_ids: list[str]) -> list[str]:
     return questions
 
 
+def _required_open_questions_for_requirements(requirement_ids: list[str]) -> list[dict[str, str]]:
+    required = []
+    if "REQ-001" in requirement_ids:
+        required.append(
+            {
+                "requirement_id": "REQ-001",
+                "decision": "What proportion or threshold of workout library access should remain free?",
+            }
+        )
+    if "REQ-007" in requirement_ids:
+        required.append(
+            {
+                "requirement_id": "REQ-007",
+                "decision": "When, how often, or on what cadence should workout content refreshes occur?",
+            }
+        )
+    if "REQ-008" in requirement_ids:
+        required.append(
+            {
+                "requirement_id": "REQ-008",
+                "decision": "Which support channels should be offered?",
+            }
+        )
+    return required
+
+
 def _validation_passed(payload: dict[str, Any]) -> bool:
     return payload.get("status") == "Success" and payload.get("passed") is True
 
@@ -261,6 +430,17 @@ def _by_id(items: Any, key: str) -> dict[str, dict[str, Any]]:
         item[key]: item
         for item in items
         if isinstance(item, dict) and isinstance(item.get(key), str) and item.get(key)
+    }
+
+
+def _evidence_reports_by_id(evidence_report: dict[str, Any]) -> dict[str, dict[str, Any]]:
+    reports = evidence_report.get("evidence_reports") if isinstance(evidence_report, dict) else None
+    if not isinstance(reports, list):
+        return {}
+    return {
+        report["finding_id"]: report
+        for report in reports
+        if isinstance(report, dict) and isinstance(report.get("finding_id"), str)
     }
 
 

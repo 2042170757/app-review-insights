@@ -3,8 +3,10 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
+from app.llm.base import LLMRequest, LLMResponse, ModelTimeoutError
 from app.prd_generator import (
     build_default_mock_output,
+    build_prd_request,
     create_mock_provider,
     generate_prds,
     save_prd_outputs,
@@ -62,6 +64,68 @@ class PRDGeneratorTests(unittest.TestCase):
         self.assertEqual(result.generation_status, "Input Validation Failed")
         self.assertEqual(result.validation.status, "SKIPPED")
         self.assertEqual(provider.requests, [])
+
+    def test_timeout_skips_validation(self) -> None:
+        provider = _FailingProvider(ModelTimeoutError("Timeout"))
+        with TemporaryDirectory() as temp_dir:
+            result = generate_prds(
+                requirements=_requirements(),
+                requirement_validation=_pass_validation(),
+                roadmap=_roadmap(),
+                roadmap_validation=_pass_validation(),
+                findings=_findings(),
+                finding_validation=_pass_validation(),
+                issues=_issues(),
+                topics=_topics(),
+                reviews=_reviews(),
+                provider=provider,
+                output_dir=Path(temp_dir),
+                is_mock=False,
+            )
+
+        self.assertFalse(result.generation_passed)
+        self.assertEqual(result.generation_status, "Timeout")
+        self.assertEqual(result.validation.status, "SKIPPED")
+
+    def test_analysis_goal_passed_to_provider(self) -> None:
+        provider = create_mock_provider(build_default_mock_output(roadmap=_roadmap(), requirements=_requirements()))
+        with TemporaryDirectory() as temp_dir:
+            generate_prds(
+                requirements=_requirements(),
+                requirement_validation=_pass_validation(),
+                roadmap=_roadmap(),
+                roadmap_validation=_pass_validation(),
+                findings=_findings(),
+                finding_validation=_pass_validation(),
+                issues=_issues(),
+                topics=_topics(),
+                reviews=_reviews(),
+                provider=provider,
+                analysis_goal="custom PRD goal",
+                output_dir=Path(temp_dir),
+            )
+
+        self.assertEqual(provider.requests[0].analysis_goal, "custom PRD goal")
+        self.assertIn("custom PRD goal", provider.requests[0].user_prompt)
+
+    def test_build_request_contains_versions_requirements_and_evidence(self) -> None:
+        request = build_prd_request(
+            requirements=_requirements(),
+            roadmap=_roadmap(),
+            findings=_findings(),
+            evidence_report=_evidence_report(),
+            analysis_goal="goal",
+        )
+        payload = json.loads(request.user_prompt)
+
+        self.assertEqual(payload["analysis_goal"], "goal")
+        self.assertEqual(payload["validated_versions"][0]["version_id"], "V1")
+        self.assertEqual(payload["validated_versions"][0]["requirements"][0]["requirement_id"], "REQ-001")
+        self.assertEqual(payload["validated_versions"][0]["required_open_questions"][0]["requirement_id"], "REQ-001")
+        self.assertEqual(
+            payload["validated_versions"][0]["requirements"][0]["findings"][0]["evidence_report"]["finding_id"],
+            "FINDING-001",
+        )
 
     def test_invalid_json_marks_generation_failed(self) -> None:
         provider = create_mock_provider("{not json")
@@ -141,7 +205,7 @@ def _roadmap() -> dict:
                 "goal": "Improve subscription billing clarity.",
                 "requirement_ids": ["REQ-001", "REQ-002"],
                 "risks": [],
-                "success_metrics": ["Decrease subscription complaints by 10%."],
+                "success_metrics": ["Decrease subscription complaint rate."],
             },
             {
                 "version_id": "V2",
@@ -149,7 +213,7 @@ def _roadmap() -> dict:
                 "goal": "Improve workout content quality.",
                 "requirement_ids": ["REQ-003"],
                 "risks": [],
-                "success_metrics": ["Decrease content complaints by 10%."],
+                "success_metrics": ["Decrease content complaint rate."],
             },
         ],
         "roadmap_items": [],
@@ -171,6 +235,15 @@ def _findings() -> list[dict]:
     ]
 
 
+def _evidence_report() -> dict:
+    return {
+        "evidence_reports": [
+            {"finding_id": "FINDING-001", "evidence_strength": "High"},
+            {"finding_id": "FINDING-002", "evidence_strength": "Medium"},
+        ]
+    }
+
+
 def _issues() -> list[dict]:
     return [
         {"issue_id": "ISSUE-001", "topic_ids": ["TOPIC-001"], "review_ids": ["review-001"]},
@@ -187,6 +260,17 @@ def _topics() -> list[dict]:
 
 def _reviews() -> list[dict]:
     return [{"id": "review-001"}, {"id": "review-002"}]
+
+
+class _FailingProvider:
+    provider_name = "deepseek"
+    model = "deepseek-v4-flash"
+
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    def generate(self, request: LLMRequest) -> LLMResponse:
+        raise self.error
 
 
 if __name__ == "__main__":

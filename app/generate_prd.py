@@ -1,15 +1,22 @@
-"""Mock PRD generation CLI for Phase 6a."""
+"""PRD generation CLI for mock and DeepSeek providers."""
 
 from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from app.issue_consolidation import DEFAULT_ANALYSIS_DIR
+from app.llm.base import MissingAPIKeyError, ModelRequestError
+from app.llm.deepseek_provider import DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL
+from app.llm.provider import build_production_provider
 from app.prd_generator import (
     DEFAULT_PRD_GOAL,
     build_default_mock_output,
+    create_failure_result,
     create_mock_provider,
     generate_prds,
 )
@@ -21,72 +28,116 @@ DEFAULT_ROADMAP_PATH = Path("artifacts/analysis/roadmap.json")
 DEFAULT_ROADMAP_VALIDATION_PATH = Path("artifacts/analysis/roadmap_validation.json")
 DEFAULT_FINDINGS_PATH = Path("artifacts/analysis/findings.json")
 DEFAULT_FINDING_VALIDATION_PATH = Path("artifacts/analysis/finding_validation.json")
+DEFAULT_EVIDENCE_REPORT_PATH = Path("artifacts/analysis/evidence_report.json")
 DEFAULT_ISSUES_PATH = Path("artifacts/analysis/issues.json")
 DEFAULT_TOPICS_PATH = Path("artifacts/analysis/topics.json")
 DEFAULT_REVIEWS_PATH = Path("artifacts/processed/reviews.json")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Mock PRD generation from validated Roadmap Versions.")
+    parser = argparse.ArgumentParser(description="PRD generation from validated Roadmap Versions.")
     parser.add_argument("--requirements", type=Path, default=DEFAULT_REQUIREMENTS_PATH)
     parser.add_argument("--requirement-validation", type=Path, default=DEFAULT_REQUIREMENT_VALIDATION_PATH)
     parser.add_argument("--roadmap", type=Path, default=DEFAULT_ROADMAP_PATH)
     parser.add_argument("--roadmap-validation", type=Path, default=DEFAULT_ROADMAP_VALIDATION_PATH)
     parser.add_argument("--findings", type=Path, default=DEFAULT_FINDINGS_PATH)
     parser.add_argument("--finding-validation", type=Path, default=DEFAULT_FINDING_VALIDATION_PATH)
+    parser.add_argument("--evidence-report", type=Path, default=DEFAULT_EVIDENCE_REPORT_PATH)
     parser.add_argument("--issues", type=Path, default=DEFAULT_ISSUES_PATH)
     parser.add_argument("--topics", type=Path, default=DEFAULT_TOPICS_PATH)
     parser.add_argument("--reviews", type=Path, default=DEFAULT_REVIEWS_PATH)
+    parser.add_argument("--provider", choices=["mock", "deepseek"], default="mock")
     parser.add_argument("--goal", default=DEFAULT_PRD_GOAL)
     parser.add_argument("--mock-output", type=Path)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_ANALYSIS_DIR)
     args = parser.parse_args()
 
+    load_dotenv(override=False)
     requirements = load_requirements(args.requirements)
     requirement_validation = load_validation(args.requirement_validation, "Requirement validation")
     roadmap = load_object(args.roadmap, "Roadmap")
     roadmap_validation = load_validation(args.roadmap_validation, "Roadmap validation")
     findings = load_findings(args.findings)
     finding_validation = load_validation(args.finding_validation, "Finding validation")
+    evidence_report = load_validation(args.evidence_report, "Evidence report")
     issues = load_issues(args.issues)
     topics = load_topics(args.topics)
     reviews = load_reviews(args.reviews)
-    raw_output = (
-        args.mock_output.read_text(encoding="utf-8")
-        if args.mock_output
-        else build_default_mock_output(roadmap=roadmap, requirements=requirements)
-    )
-    provider = create_mock_provider(raw_output)
-    result = generate_prds(
-        requirements=requirements,
-        requirement_validation=requirement_validation,
-        roadmap=roadmap,
-        roadmap_validation=roadmap_validation,
-        findings=findings,
-        finding_validation=finding_validation,
-        issues=issues,
-        topics=topics,
-        reviews=reviews,
-        provider=provider,
-        analysis_goal=args.goal,
-        output_dir=args.output_dir,
-        is_mock=True,
-    )
+    if args.provider == "mock":
+        raw_output = (
+            args.mock_output.read_text(encoding="utf-8")
+            if args.mock_output
+            else build_default_mock_output(roadmap=roadmap, requirements=requirements)
+        )
+        provider = create_mock_provider(raw_output)
+        result = generate_prds(
+            requirements=requirements,
+            requirement_validation=requirement_validation,
+            roadmap=roadmap,
+            roadmap_validation=roadmap_validation,
+            findings=findings,
+            finding_validation=finding_validation,
+            evidence_report=evidence_report,
+            issues=issues,
+            topics=topics,
+            reviews=reviews,
+            provider=provider,
+            analysis_goal=args.goal,
+            output_dir=args.output_dir,
+            is_mock=True,
+        )
+    else:
+        try:
+            provider = build_production_provider()
+        except (MissingAPIKeyError, ModelRequestError) as exc:
+            provider_info = _ProviderInfo(
+                provider_name="deepseek",
+                model=os.environ.get(DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL),
+            )
+            result = create_failure_result(
+                "Missing API Key" if isinstance(exc, MissingAPIKeyError) else "Model Request Error",
+                str(exc),
+                provider_info,
+                args.goal,
+                args.output_dir,
+                False,
+            )
+        else:
+            result = generate_prds(
+                requirements=requirements,
+                requirement_validation=requirement_validation,
+                roadmap=roadmap,
+                roadmap_validation=roadmap_validation,
+                findings=findings,
+                finding_validation=finding_validation,
+                evidence_report=evidence_report,
+                issues=issues,
+                topics=topics,
+                reviews=reviews,
+                provider=provider,
+                analysis_goal=args.goal,
+                output_dir=args.output_dir,
+                is_mock=False,
+            )
 
     if result.generation_passed:
         print("PRD Generation: PASS")
     else:
         print("PRD Generation: FAIL")
         print(f"Failure Type: {result.generation_status}")
-    print("Provider: mock")
+    print(f"Provider: {result.provider}")
+    print(f"Model: {result.model}")
     print(f"PRD Count: {len(result.prds)}")
-    print(f"Validation: {'PASS' if result.validation.passed else result.validation.status}")
+    print(f"Validation: {'PASS' if result.validation.passed else 'FAIL'}")
+    if not result.validation.passed:
+        print(f"Validation Status: {result.validation.status}")
     for prd in result.prds:
         print(f"prd_id: {prd['prd_id']}")
         print(f"version_id: {prd['version_id']}")
         print(f"title: {prd['title']}")
-        print(f"requirement_ids: {prd['requirement_ids']}")
+        print(f"requirement_count: {len(prd['requirement_ids'])}")
         print(f"goal_count: {len(prd['goals'])}")
+        print(f"non_goal_count: {len(prd['non_goals'])}")
         print(f"open_question_count: {len(prd['open_questions'])}")
     for error in result.validation.errors:
         print(f"- {error}")
@@ -145,6 +196,15 @@ def load_object(path: Path, label: str) -> dict:
     if not isinstance(payload, dict):
         raise ValueError(f"{label} file is invalid: {path}")
     return payload
+
+
+class _ProviderInfo:
+    def __init__(self, *, provider_name: str, model: str) -> None:
+        self.provider_name = provider_name
+        self.model = model
+
+    def generate(self, request):
+        raise NotImplementedError
 
 
 if __name__ == "__main__":
