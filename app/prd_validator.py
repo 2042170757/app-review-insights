@@ -1,0 +1,446 @@
+"""Deterministic validation for PRD output and traceability."""
+
+from __future__ import annotations
+
+import json
+import re
+from dataclasses import asdict, dataclass, field
+from typing import Any
+
+from app.prd_schema import PRD
+
+
+STATUS_SUCCESS = "Success"
+STATUS_INVALID_JSON = "Invalid JSON"
+STATUS_SCHEMA_VALIDATION_FAILED = "Schema Validation Failed"
+STATUS_INPUT_VALIDATION_FAILED = "Input Validation Failed"
+STATUS_UNKNOWN_VERSION_ID = "Unknown Version ID"
+STATUS_UNKNOWN_REQUIREMENT_ID = "Unknown Requirement ID"
+STATUS_REQUIREMENT_VERSION_MISMATCH = "Requirement Version Mismatch"
+STATUS_UNKNOWN_FINDING_ID = "Unknown Finding ID"
+STATUS_TRACEABILITY_MISMATCH = "Traceability Mismatch"
+STATUS_GOAL_INCOHERENCE = "Goal Incoherence"
+STATUS_EVIDENCE_SUMMARY_INVALID = "Evidence Summary Invalid"
+STATUS_SUCCESS_METRIC_INVALID = "Success Metric Invalid"
+STATUS_PROHIBITED_IMPLEMENTATION_DETAIL = "Prohibited Implementation Detail"
+STATUS_DUPLICATE_PRD_ID = "Duplicate PRD ID"
+STATUS_EMPTY_PRDS = "Empty PRDs"
+
+TECHNICAL_TERMS = {
+    "react",
+    "vue",
+    "angular",
+    "postgresql",
+    "redis",
+    "sql",
+    "database",
+    "api",
+    "endpoint",
+    "component",
+    "class",
+    "function",
+    ".py",
+    ".js",
+    ".tsx",
+    "code",
+}
+
+GENERIC_METRICS = {
+    "better user experience",
+    "improve user experience",
+    "用户体验更好",
+    "用户更满意",
+}
+
+
+@dataclass
+class PRDValidationResult:
+    status: str
+    passed: bool
+    errors: list[str] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    prds: list[PRD] = field(default_factory=list)
+    unknown_version_ids: list[str] = field(default_factory=list)
+    unknown_requirement_ids: list[str] = field(default_factory=list)
+    unknown_finding_ids: list[str] = field(default_factory=list)
+    traceability_errors: list[str] = field(default_factory=list)
+    evidence_summary_errors: list[str] = field(default_factory=list)
+    goal_errors: list[str] = field(default_factory=list)
+    success_metric_errors: list[str] = field(default_factory=list)
+    implementation_detail_errors: list[str] = field(default_factory=list)
+    duplicate_prd_ids: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        payload = asdict(self)
+        payload["prds"] = [asdict(prd) for prd in self.prds]
+        return payload
+
+
+def validate_prd_output(
+    raw_text: str,
+    *,
+    requirements_by_id: dict[str, dict[str, Any]],
+    versions_by_id: dict[str, dict[str, Any]],
+    findings_by_id: dict[str, dict[str, Any]],
+    issues_by_id: dict[str, dict[str, Any]],
+    topics_by_id: dict[str, dict[str, Any]],
+    valid_review_ids: set[str],
+    requirement_validation_passed: bool,
+    roadmap_validation_passed: bool,
+    finding_validation_passed: bool,
+) -> PRDValidationResult:
+    if not (requirement_validation_passed and roadmap_validation_passed and finding_validation_passed):
+        return PRDValidationResult(
+            status=STATUS_INPUT_VALIDATION_FAILED,
+            passed=False,
+            errors=["Requirement, Roadmap, and Finding validation must all be PASS before PRD validation."],
+        )
+    try:
+        payload = json.loads(raw_text)
+    except json.JSONDecodeError as exc:
+        return PRDValidationResult(
+            status=STATUS_INVALID_JSON,
+            passed=False,
+            errors=[f"Invalid JSON: {exc.msg}"],
+        )
+    return validate_prd_payload(
+        payload,
+        requirements_by_id=requirements_by_id,
+        versions_by_id=versions_by_id,
+        findings_by_id=findings_by_id,
+        issues_by_id=issues_by_id,
+        topics_by_id=topics_by_id,
+        valid_review_ids=valid_review_ids,
+    )
+
+
+def validate_prd_payload(
+    payload: Any,
+    *,
+    requirements_by_id: dict[str, dict[str, Any]],
+    versions_by_id: dict[str, dict[str, Any]],
+    findings_by_id: dict[str, dict[str, Any]],
+    issues_by_id: dict[str, dict[str, Any]],
+    topics_by_id: dict[str, dict[str, Any]],
+    valid_review_ids: set[str],
+) -> PRDValidationResult:
+    if not isinstance(payload, dict):
+        return _fail(STATUS_SCHEMA_VALIDATION_FAILED, ["schema: root must be an object"])
+    raw_prds = payload.get("prds")
+    if raw_prds is None:
+        return _fail(STATUS_SCHEMA_VALIDATION_FAILED, ["schema: missing prds"])
+    if not isinstance(raw_prds, list):
+        return _fail(STATUS_SCHEMA_VALIDATION_FAILED, ["schema: prds must be a list"])
+    if not raw_prds:
+        return PRDValidationResult(
+            status=STATUS_EMPTY_PRDS,
+            passed=True,
+            warnings=["empty_prds"],
+        )
+
+    errors: list[str] = []
+    prds: list[PRD] = []
+    seen_prd_ids: set[str] = set()
+    duplicate_prd_ids: set[str] = set()
+    unknown_version_ids: set[str] = set()
+    unknown_requirement_ids: set[str] = set()
+    unknown_finding_ids: set[str] = set()
+    version_mismatch_errors: list[str] = []
+    traceability_errors: list[str] = []
+    evidence_summary_errors: list[str] = []
+    goal_errors: list[str] = []
+    metric_errors: list[str] = []
+    implementation_errors: list[str] = []
+
+    for index, raw_prd in enumerate(raw_prds):
+        prefix = f"prds[{index}]"
+        if not isinstance(raw_prd, dict):
+            errors.append(f"{prefix}: must be an object")
+            continue
+
+        prd_id = _text(raw_prd.get("prd_id"))
+        version_id = _text(raw_prd.get("version_id"))
+        title = _text(raw_prd.get("title"))
+        overview = _text(raw_prd.get("overview"))
+        problem_statement = _text(raw_prd.get("problem_statement"))
+        evidence_summary = _text(raw_prd.get("evidence_summary"))
+        goals = _text_list(raw_prd.get("goals"), f"{prefix}.goals", errors, min_items=1)
+        non_goals = _text_list(raw_prd.get("non_goals"), f"{prefix}.non_goals", errors, min_items=0)
+        requirement_ids = _text_list(raw_prd.get("requirement_ids"), f"{prefix}.requirement_ids", errors, min_items=1)
+        risks = _text_list(raw_prd.get("risks"), f"{prefix}.risks", errors, min_items=0)
+        success_metrics = _text_list(raw_prd.get("success_metrics"), f"{prefix}.success_metrics", errors, min_items=0)
+        open_questions = _text_list(raw_prd.get("open_questions"), f"{prefix}.open_questions", errors, min_items=0)
+
+        if not prd_id:
+            errors.append(f"{prefix}.prd_id: required")
+        elif prd_id in seen_prd_ids:
+            duplicate_prd_ids.add(prd_id)
+        else:
+            seen_prd_ids.add(prd_id)
+        if not version_id:
+            errors.append(f"{prefix}.version_id: required")
+        elif version_id not in versions_by_id:
+            unknown_version_ids.add(version_id)
+        if not title:
+            errors.append(f"{prefix}.title: required")
+        if not overview:
+            errors.append(f"{prefix}.overview: required")
+        if not problem_statement:
+            errors.append(f"{prefix}.problem_statement: required")
+        if not evidence_summary:
+            errors.append(f"{prefix}.evidence_summary: required")
+
+        version = versions_by_id.get(version_id)
+        if version:
+            expected_requirement_ids = _list_text(version.get("requirement_ids"))
+            if requirement_ids and set(requirement_ids) != set(expected_requirement_ids):
+                version_mismatch_errors.append(
+                    f"{prefix}.requirement_ids: expected {expected_requirement_ids}, got {requirement_ids}"
+                )
+            if goals and not _text_coherent(" ".join(goals), _text(version.get("goal"))):
+                goal_errors.append(f"{prefix}.goals: do not align with version goal {version_id}")
+
+        finding_ids_for_prd: set[str] = set()
+        for requirement_id in requirement_ids:
+            requirement = requirements_by_id.get(requirement_id)
+            if not requirement:
+                unknown_requirement_ids.add(requirement_id)
+                continue
+            requirement_finding_ids = _list_text(requirement.get("finding_ids"))
+            if not requirement_finding_ids:
+                traceability_errors.append(f"{prefix}.{requirement_id}: no finding_ids")
+            for finding_id in requirement_finding_ids:
+                finding_ids_for_prd.add(finding_id)
+                finding = findings_by_id.get(finding_id)
+                if not finding:
+                    unknown_finding_ids.add(finding_id)
+                    continue
+                _validate_finding_chain(
+                    prefix=f"{prefix}.{requirement_id}.{finding_id}",
+                    finding=finding,
+                    issues_by_id=issues_by_id,
+                    topics_by_id=topics_by_id,
+                    valid_review_ids=valid_review_ids,
+                    traceability_errors=traceability_errors,
+                )
+
+        if evidence_summary:
+            evidence_ids = set(requirement_ids).union(finding_ids_for_prd)
+            if not _mentions_any_id(evidence_summary, evidence_ids):
+                evidence_summary_errors.append(
+                    f"{prefix}.evidence_summary: must cite at least one related requirement_id or finding_id"
+                )
+
+        for non_goal_index, non_goal in enumerate(non_goals):
+            if _contains_technical_detail(non_goal):
+                implementation_errors.append(
+                    f"{prefix}.non_goals[{non_goal_index}]: contains implementation detail"
+                )
+        for metric_index, metric in enumerate(success_metrics):
+            if not _is_measurable_metric(metric):
+                metric_errors.append(f"{prefix}.success_metrics[{metric_index}]: not measurable")
+
+        if (
+            prd_id
+            and version_id
+            and title
+            and overview
+            and problem_statement
+            and evidence_summary
+            and goals
+            and requirement_ids
+        ):
+            prds.append(
+                PRD(
+                    prd_id=prd_id,
+                    version_id=version_id,
+                    title=title,
+                    overview=overview,
+                    problem_statement=problem_statement,
+                    evidence_summary=evidence_summary,
+                    goals=goals,
+                    non_goals=non_goals,
+                    requirement_ids=requirement_ids,
+                    risks=risks,
+                    success_metrics=success_metrics,
+                    open_questions=open_questions,
+                )
+            )
+
+    if duplicate_prd_ids:
+        return _fail(
+            STATUS_DUPLICATE_PRD_ID,
+            [f"duplicate prd id {prd_id}" for prd_id in sorted(duplicate_prd_ids)],
+            duplicate_prd_ids=sorted(duplicate_prd_ids),
+        )
+    if unknown_version_ids:
+        return _fail(
+            STATUS_UNKNOWN_VERSION_ID,
+            [f"unknown version id {version_id}" for version_id in sorted(unknown_version_ids)],
+            unknown_version_ids=sorted(unknown_version_ids),
+        )
+    if unknown_requirement_ids:
+        return _fail(
+            STATUS_UNKNOWN_REQUIREMENT_ID,
+            [f"unknown requirement id {requirement_id}" for requirement_id in sorted(unknown_requirement_ids)],
+            unknown_requirement_ids=sorted(unknown_requirement_ids),
+        )
+    if version_mismatch_errors:
+        return _fail(STATUS_REQUIREMENT_VERSION_MISMATCH, version_mismatch_errors)
+    if unknown_finding_ids:
+        return _fail(
+            STATUS_UNKNOWN_FINDING_ID,
+            [f"unknown finding id {finding_id}" for finding_id in sorted(unknown_finding_ids)],
+            unknown_finding_ids=sorted(unknown_finding_ids),
+        )
+    if traceability_errors:
+        return _fail(
+            STATUS_TRACEABILITY_MISMATCH,
+            traceability_errors,
+            traceability_errors=traceability_errors,
+        )
+    if goal_errors:
+        return _fail(STATUS_GOAL_INCOHERENCE, goal_errors, goal_errors=goal_errors)
+    if evidence_summary_errors:
+        return _fail(
+            STATUS_EVIDENCE_SUMMARY_INVALID,
+            evidence_summary_errors,
+            evidence_summary_errors=evidence_summary_errors,
+        )
+    if metric_errors:
+        return _fail(
+            STATUS_SUCCESS_METRIC_INVALID,
+            metric_errors,
+            success_metric_errors=metric_errors,
+        )
+    if implementation_errors:
+        return _fail(
+            STATUS_PROHIBITED_IMPLEMENTATION_DETAIL,
+            implementation_errors,
+            implementation_detail_errors=implementation_errors,
+        )
+    if errors:
+        return _fail(STATUS_SCHEMA_VALIDATION_FAILED, errors)
+    return PRDValidationResult(status=STATUS_SUCCESS, passed=True, prds=prds)
+
+
+def _validate_finding_chain(
+    *,
+    prefix: str,
+    finding: dict[str, Any],
+    issues_by_id: dict[str, dict[str, Any]],
+    topics_by_id: dict[str, dict[str, Any]],
+    valid_review_ids: set[str],
+    traceability_errors: list[str],
+) -> None:
+    finding_review_ids = set(_list_text(finding.get("review_ids")))
+    if not finding_review_ids:
+        traceability_errors.append(f"{prefix}: no finding review evidence")
+    for review_id in finding_review_ids:
+        if review_id not in valid_review_ids:
+            traceability_errors.append(f"{prefix}: finding review id {review_id} is unknown")
+    issue_review_ids: set[str] = set()
+    for issue_id in _list_text(finding.get("issue_ids")):
+        issue = issues_by_id.get(issue_id)
+        if not issue:
+            traceability_errors.append(f"{prefix}: unknown issue id {issue_id}")
+            continue
+        issue_review_ids.update(_list_text(issue.get("review_ids")))
+        topic_review_ids: set[str] = set()
+        for topic_id in _list_text(issue.get("topic_ids")):
+            topic = topics_by_id.get(topic_id)
+            if not topic:
+                traceability_errors.append(f"{prefix}: unknown topic id {topic_id}")
+                continue
+            topic_review_ids.update(_list_text(topic.get("review_ids")))
+        if topic_review_ids and not topic_review_ids.intersection(issue_review_ids):
+            traceability_errors.append(f"{prefix}: issue/topic review evidence has no overlap")
+    if issue_review_ids and finding_review_ids and not finding_review_ids.intersection(issue_review_ids):
+        traceability_errors.append(f"{prefix}: finding/issue review evidence has no overlap")
+
+
+def _fail(
+    status: str,
+    errors: list[str],
+    *,
+    unknown_version_ids: list[str] | None = None,
+    unknown_requirement_ids: list[str] | None = None,
+    unknown_finding_ids: list[str] | None = None,
+    traceability_errors: list[str] | None = None,
+    evidence_summary_errors: list[str] | None = None,
+    goal_errors: list[str] | None = None,
+    success_metric_errors: list[str] | None = None,
+    implementation_detail_errors: list[str] | None = None,
+    duplicate_prd_ids: list[str] | None = None,
+) -> PRDValidationResult:
+    return PRDValidationResult(
+        status=status,
+        passed=False,
+        errors=errors,
+        unknown_version_ids=unknown_version_ids or [],
+        unknown_requirement_ids=unknown_requirement_ids or [],
+        unknown_finding_ids=unknown_finding_ids or [],
+        traceability_errors=traceability_errors or [],
+        evidence_summary_errors=evidence_summary_errors or [],
+        goal_errors=goal_errors or [],
+        success_metric_errors=success_metric_errors or [],
+        implementation_detail_errors=implementation_detail_errors or [],
+        duplicate_prd_ids=duplicate_prd_ids or [],
+    )
+
+
+def _text_list(value: Any, field_name: str, errors: list[str], *, min_items: int) -> list[str]:
+    if not isinstance(value, list) or len(value) < min_items:
+        errors.append(f"{field_name}: must contain at least {min_items} item(s)")
+        return []
+    normalized = [_text(item) for item in value]
+    for item in normalized:
+        if not item:
+            errors.append(f"{field_name}: empty item")
+    return normalized
+
+
+def _text_coherent(left: str, right: str) -> bool:
+    left_tokens = _domain_tokens(left)
+    right_tokens = _domain_tokens(right)
+    if not left_tokens or not right_tokens:
+        return False
+    return bool(left_tokens.intersection(right_tokens))
+
+
+def _domain_tokens(value: str) -> set[str]:
+    words = set(re.findall(r"[a-z0-9]+", value.lower()))
+    domains = {
+        "subscription": {"subscription", "billing", "paywall", "free", "premium", "cancellation", "price"},
+        "content": {"workout", "content", "imagery", "customization", "freshness", "library"},
+        "support": {"support", "ads", "advertising", "redirects", "trust"},
+    }
+    matched: set[str] = set()
+    for domain, terms in domains.items():
+        if words.intersection(terms):
+            matched.add(domain)
+    return matched or words
+
+
+def _mentions_any_id(text: str, ids: set[str]) -> bool:
+    return any(identifier in text for identifier in ids)
+
+
+def _contains_technical_detail(value: str) -> bool:
+    normalized = value.lower()
+    return any(term in normalized for term in TECHNICAL_TERMS)
+
+
+def _is_measurable_metric(value: str) -> bool:
+    normalized = value.strip().lower()
+    if normalized in GENERIC_METRICS:
+        return False
+    return bool(re.search(r"\d|%|rate|count|time|retention|conversion|decrease|increase|reduction|complaints|reviews", normalized))
+
+
+def _list_text(value: Any) -> list[str]:
+    return [_text(item) for item in value] if isinstance(value, list) else []
+
+
+def _text(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
