@@ -57,6 +57,8 @@ class APIResultsTests(unittest.TestCase):
         self.assertEqual(prd["prds"][0]["requirement_ids"], ["REQ-001"])
         self.assertEqual(test_cases["test_cases"][0]["requirement_id"], "REQ-001")
         self.assertEqual(traceability["graph"]["review_to_topics"][f"{run.run_id}-review"], ["TOPIC-001"])
+        self.assertEqual(traceability["graph"]["test_case_to_reviews"]["TC-001"], [f"{run.run_id}-review"])
+        self.assertEqual(traceability["graph"]["review_to_test_cases"][f"{run.run_id}-review"], ["TC-001"])
         self.assertEqual(validation["runtime_validation_status"], "pass")
         self.assertEqual(validation["submission_validation_status"], "pending")
         self.assertEqual(validation["metadata"]["model_registry"][0]["max_tokens"], 3000)
@@ -292,6 +294,7 @@ def _write_stage_artifacts(source_dir: Path, stage: str, run_id: str) -> list[Pa
                         "requirement_id": "REQ-001",
                         "acceptance_criteria_ids": ["REQ-001-AC-1"],
                         "title": "Test case",
+                        "source_review_ids": [f"{run_id}-review"],
                     }
                 ]
             },

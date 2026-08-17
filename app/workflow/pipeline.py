@@ -614,6 +614,7 @@ def _traceability_summary(report: dict[str, Any]) -> dict[str, Any]:
         "backward_traceability": report.get("backward_traceability"),
         "artifact_consistency": report.get("artifact_consistency"),
         "evidence_traceability": report.get("evidence_traceability"),
+        "explicit_test_case_review_link": report.get("explicit_test_case_review_link"),
         "statistics_model_separation": report.get("statistics_model_separation"),
         "failure_state_audit": report.get("failure_state_audit"),
         "uncertainty_conflict_audit": report.get("uncertainty_conflict_audit"),

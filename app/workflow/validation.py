@@ -17,6 +17,7 @@ RUNTIME_STATUS_FIELDS = (
     "backward_traceability",
     "artifact_consistency",
     "evidence_traceability",
+    "explicit_test_case_review_link",
     "statistics_model_separation",
     "failure_state_audit",
     "uncertainty_conflict_audit",

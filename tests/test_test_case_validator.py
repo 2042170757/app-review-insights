@@ -230,6 +230,7 @@ def _payload() -> dict:
                 "expected_result": "The subscription wording satisfies REQ-001-AC-1.",
                 "test_type": "functional",
                 "priority": "P1",
+                "source_review_ids": ["review-001"],
             }
         ]
     }

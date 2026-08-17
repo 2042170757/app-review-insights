@@ -118,6 +118,7 @@ class FakeFinalValidation:
             "backward_traceability": "PASS",
             "artifact_consistency": "PASS",
             "evidence_traceability": "PASS",
+            "explicit_test_case_review_link": "PASS",
             "statistics_model_separation": "PASS",
             "failure_state_audit": "PASS",
             "uncertainty_conflict_audit": "PASS",

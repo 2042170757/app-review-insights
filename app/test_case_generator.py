@@ -23,6 +23,7 @@ from app.test_case_validator import (
     STATUS_INVALID_JSON,
     STATUS_SCHEMA_VALIDATION_FAILED,
     TestCaseValidationResult,
+    enrich_test_case_source_review_ids,
     validate_test_case_output,
 )
 from app.test_coverage import TestCoverageReport, build_acceptance_criteria_index, calculate_test_coverage, make_acceptance_criteria_id
@@ -52,10 +53,11 @@ Rules:
 14. expected_result must be verifiable.
 15. test_type must be one of functional, validation, edge_case, regression.
 16. priority must equal the referenced Requirement priority.
-17. Do not generate PRDs.
-18. Do not generate Requirements.
-19. Do not generate technical architecture.
-20. Do not generate implementation code.
+17. Do not determine source_review_ids; the backend attaches them deterministically from Requirement -> Finding -> Review evidence.
+18. Do not generate PRDs.
+19. Do not generate Requirements.
+20. Do not generate technical architecture.
+21. Do not generate implementation code.
 
 Return only JSON matching the existing Test Case schema."""
 
@@ -124,12 +126,23 @@ def generate_test_cases(
     except ModelRequestError as exc:
         return create_failure_result("Model Request Error", str(exc), requirements, provider, analysis_goal, output_dir, is_mock)
     extracted_json = extract_json_text(response.raw_text)
+    findings_by_id = _by_id(findings or [], "finding_id")
+    enriched_json = extracted_json
+    try:
+        enriched_payload = enrich_test_case_source_review_ids(
+            json.loads(extracted_json),
+            requirements=requirements,
+            findings_by_id=findings_by_id,
+        )
+        enriched_json = json.dumps(enriched_payload, ensure_ascii=False)
+    except json.JSONDecodeError:
+        pass
     validation = validate_test_case_output(
-        extracted_json,
+        enriched_json,
         requirements=requirements,
         requirement_validation_passed=requirement_passed,
         prd_validation_passed=prd_passed,
-        findings_by_id=_by_id(findings or [], "finding_id"),
+        findings_by_id=findings_by_id,
         valid_review_ids=set(_by_id(reviews or [], "id")),
         enforce_full_coverage=True,
     )
@@ -207,6 +220,7 @@ def build_test_case_request(
                         "expected_result": "verifiable expected result",
                         "test_type": "functional",
                         "priority": "must equal Requirement priority",
+                        "source_review_ids": [],
                     }
                 ]
             },
@@ -245,6 +259,7 @@ def build_default_mock_output(requirements: list[dict[str, Any]]) -> str:
                     "expected_result": f"The product behavior satisfies {acceptance_criteria_id}: {criterion.strip()}",
                     "test_type": "functional",
                     "priority": _priority_for_requirement(requirement),
+                    "source_review_ids": _list_text(requirement.get("source_review_ids")),
                 }
             )
             counter += 1
@@ -360,3 +375,9 @@ def _by_id(items: list[dict[str, Any]], key: str) -> dict[str, dict[str, Any]]:
         for item in items
         if isinstance(item, dict) and isinstance(item.get(key), str) and item.get(key)
     }
+
+
+def _list_text(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item.strip() for item in value if isinstance(item, str) and item.strip()]

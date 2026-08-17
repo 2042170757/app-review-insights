@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any
 
 from app.requirement_schema import VALID_PRIORITIES
@@ -22,6 +22,7 @@ class TestCase:
     expected_result: str
     test_type: str
     priority: str
+    source_review_ids: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -49,6 +50,7 @@ TEST_CASE_JSON_SCHEMA: dict[str, Any] = {
                     "expected_result",
                     "test_type",
                     "priority",
+                    "source_review_ids",
                 ],
                 "properties": {
                     "test_case_id": {"type": "string", "minLength": 1},
@@ -68,6 +70,10 @@ TEST_CASE_JSON_SCHEMA: dict[str, Any] = {
                     "expected_result": {"type": "string", "minLength": 1},
                     "test_type": {"type": "string", "enum": sorted(VALID_TEST_TYPES)},
                     "priority": {"type": "string", "enum": sorted(VALID_PRIORITIES)},
+                    "source_review_ids": {
+                        "type": "array",
+                        "items": {"type": "string", "minLength": 1},
+                    },
                 },
             },
         }

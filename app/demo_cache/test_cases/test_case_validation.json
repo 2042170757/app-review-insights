@@ -26,7 +26,19 @@
       ],
       "expected_result": "At least 5 distinct workouts are accessible without a subscription. Each workout is clearly labeled as free or premium. The free workout can be completed without any paywall interruptions.",
       "test_type": "functional",
-      "priority": "P1"
+      "priority": "P1",
+      "source_review_ids": [
+        "14303029084",
+        "14306466803",
+        "14314433809",
+        "14320776504",
+        "14334995806",
+        "14381025970",
+        "14408658475",
+        "14421357217",
+        "14423833481",
+        "14424309790"
+      ]
     },
     {
       "test_case_id": "TC-002",
@@ -53,7 +65,13 @@
       ],
       "expected_result": "Subscription details are visible before purchase. A reminder is received at least 24 hours before trial end. The user can cancel within the app without support. No unexpected charges occur after cancellation.",
       "test_type": "functional",
-      "priority": "P1"
+      "priority": "P1",
+      "source_review_ids": [
+        "14297707993",
+        "14329131554",
+        "14342854364",
+        "14397715067"
+      ]
     },
     {
       "test_case_id": "TC-003",
@@ -75,7 +93,13 @@
       ],
       "expected_result": "Workout descriptions and images are realistic and not described as 'AI slop' or 'cheesy AI mockups'. Workouts are varied and not repetitive. No unrealistic or objectifying imagery is present.",
       "test_type": "functional",
-      "priority": "P1"
+      "priority": "P1",
+      "source_review_ids": [
+        "14314433809",
+        "14359950060",
+        "14367493057",
+        "14397715067"
+      ]
     },
     {
       "test_case_id": "TC-004",
@@ -99,7 +123,12 @@
       ],
       "expected_result": "Ads have a clear and easily accessible close button. After dismissal, the user returns to the workout without further interruption. No external website redirects occur during the workout session.",
       "test_type": "functional",
-      "priority": "P2"
+      "priority": "P2",
+      "source_review_ids": [
+        "14314433809",
+        "14359950060",
+        "14411802642"
+      ]
     },
     {
       "test_case_id": "TC-005",
@@ -123,7 +152,12 @@
       ],
       "expected_result": "No exercises target the avoided body area. Plan settings persist across sessions. The user can review and adjust plan settings at any time.",
       "test_type": "functional",
-      "priority": "P2"
+      "priority": "P2",
+      "source_review_ids": [
+        "14353095830",
+        "14366479265",
+        "14401657445"
+      ]
     },
     {
       "test_case_id": "TC-006",
@@ -145,7 +179,11 @@
       ],
       "expected_result": "Imagery does not depict unrealistic body proportions or objectify women. Imagery focuses on fitness, strength, and health. Users do not describe the imagery as 'cheesy' or 'fake'.",
       "test_type": "functional",
-      "priority": "P2"
+      "priority": "P2",
+      "source_review_ids": [
+        "14330268991",
+        "14359950060"
+      ]
     }
   ],
   "coverage": {
@@ -167,5 +205,6 @@
   "priority_mismatches": [],
   "generic_test_case_errors": [],
   "traceability_errors": [],
-  "scope_overreach_errors": []
+  "scope_overreach_errors": [],
+  "duplicate_source_review_ids": []
 }

@@ -28,6 +28,7 @@ class FinalValidationResult:
     backward_traceability: str
     artifact_consistency: str
     evidence_traceability: str
+    explicit_test_case_review_link: str
     statistics_model_separation: str
     failure_state_audit: str
     uncertainty_conflict_audit: str
@@ -90,6 +91,7 @@ def run_final_validation(*, root: Path = Path(".")) -> FinalValidationResult:
         backward_traceability=traceability.backward_traceability,
         artifact_consistency=traceability.artifact_consistency,
         evidence_traceability=traceability.evidence_traceability,
+        explicit_test_case_review_link=traceability.explicit_test_case_review_link,
         statistics_model_separation=statistics_model["status"],
         failure_state_audit=failure_state["status"],
         uncertainty_conflict_audit=uncertainty_conflict["status"],
@@ -301,6 +303,7 @@ def print_report(result: FinalValidationResult) -> None:
     print(f"Backward Traceability: {result.backward_traceability}")
     print(f"Artifact Consistency: {result.artifact_consistency}")
     print(f"Evidence Traceability: {result.evidence_traceability}")
+    print(f"Explicit Test Case -> Review Link: {result.explicit_test_case_review_link}")
     print(f"Statistics / Model Separation: {result.statistics_model_separation}")
     print(f"Failure State Audit: {result.failure_state_audit}")
     print(f"Uncertainty / Conflict Audit: {result.uncertainty_conflict_audit}")

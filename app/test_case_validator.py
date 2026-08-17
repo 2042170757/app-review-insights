@@ -57,6 +57,7 @@ class TestCaseValidationResult:
     generic_test_case_errors: list[str] = field(default_factory=list)
     traceability_errors: list[str] = field(default_factory=list)
     scope_overreach_errors: list[str] = field(default_factory=list)
+    duplicate_source_review_ids: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -156,6 +157,7 @@ def validate_test_case_payload(
     generic_errors: list[str] = []
     traceability_errors: list[str] = []
     scope_overreach_errors: list[str] = []
+    duplicate_source_review_ids: set[str] = set()
 
     for index, raw_test_case in enumerate(raw_test_cases):
         prefix = f"test_cases[{index}]"
@@ -171,6 +173,10 @@ def validate_test_case_payload(
         expected_result = _text(raw_test_case.get("expected_result"))
         test_type = _text(raw_test_case.get("test_type"))
         priority = _text(raw_test_case.get("priority"))
+        has_source_review_ids = "source_review_ids" in raw_test_case
+        source_review_ids = _text_list(raw_test_case.get("source_review_ids"), f"{prefix}.source_review_ids", errors, min_items=0)
+        duplicate_source_review_ids.update(_duplicates(source_review_ids))
+        source_review_ids = _stable_unique(source_review_ids)
 
         if not test_case_id:
             errors.append(f"{prefix}.test_case_id: required")
@@ -219,6 +225,15 @@ def validate_test_case_payload(
                 valid_review_ids=valid_review_ids,
                 traceability_errors=traceability_errors,
             )
+            _validate_source_review_ids(
+                prefix=prefix,
+                requirement=requirements_by_id[requirement_id],
+                source_review_ids=source_review_ids,
+                has_source_review_ids=has_source_review_ids,
+                findings_by_id=findings_by_id,
+                valid_review_ids=valid_review_ids,
+                traceability_errors=traceability_errors,
+            )
         scope_error = _scope_overreach_error(prefix, title, steps, expected_result, referenced_criteria_texts)
         if scope_error:
             scope_overreach_errors.append(scope_error)
@@ -232,6 +247,7 @@ def validate_test_case_payload(
             and expected_result
             and test_type in VALID_TEST_TYPES
             and priority in VALID_PRIORITIES
+            and has_source_review_ids
         ):
             test_cases.append(
                 TestCase(
@@ -244,6 +260,7 @@ def validate_test_case_payload(
                     expected_result=expected_result,
                     test_type=test_type,
                     priority=priority,
+                    source_review_ids=source_review_ids,
                 )
             )
 
@@ -299,15 +316,25 @@ def validate_test_case_payload(
             coverage=coverage,
             scope_overreach_errors=scope_overreach_errors,
         )
+    if duplicate_source_review_ids:
+        warnings = [f"duplicate source_review_id {review_id} was de-duplicated" for review_id in sorted(duplicate_source_review_ids)]
+    else:
+        warnings = []
     if traceability_errors:
-        return _fail(
+        result = _fail(
             STATUS_TRACEABILITY_MISMATCH,
             traceability_errors,
             coverage=coverage,
             traceability_errors=traceability_errors,
         )
+        result.warnings.extend(warnings)
+        result.duplicate_source_review_ids = sorted(duplicate_source_review_ids)
+        return result
     if errors:
-        return _fail(STATUS_SCHEMA_VALIDATION_FAILED, errors, coverage=coverage)
+        result = _fail(STATUS_SCHEMA_VALIDATION_FAILED, errors, coverage=coverage)
+        result.warnings.extend(warnings)
+        result.duplicate_source_review_ids = sorted(duplicate_source_review_ids)
+        return result
     if enforce_full_coverage and (coverage.uncovered_requirement_ids or coverage.uncovered_acceptance_criteria_ids):
         coverage_errors = []
         if coverage.uncovered_requirement_ids:
@@ -315,7 +342,14 @@ def validate_test_case_payload(
         if coverage.uncovered_acceptance_criteria_ids:
             coverage_errors.append(f"uncovered acceptance criteria: {coverage.uncovered_acceptance_criteria_ids}")
         return _fail(STATUS_COVERAGE_INCOMPLETE, coverage_errors, coverage=coverage)
-    return TestCaseValidationResult(status=STATUS_SUCCESS, passed=True, test_cases=test_cases, coverage=coverage)
+    return TestCaseValidationResult(
+        status=STATUS_SUCCESS,
+        passed=True,
+        test_cases=test_cases,
+        coverage=coverage,
+        warnings=warnings,
+        duplicate_source_review_ids=sorted(duplicate_source_review_ids),
+    )
 
 
 def _validate_requirement_traceability(
@@ -346,6 +380,83 @@ def _validate_requirement_traceability(
                     traceability_errors.append(f"{prefix}: finding {finding_id} references unknown review_id {review_id}")
 
 
+def enrich_test_case_source_review_ids(
+    payload: Any,
+    *,
+    requirements: list[dict[str, Any]],
+    findings_by_id: dict[str, dict[str, Any]],
+) -> Any:
+    if not isinstance(payload, dict):
+        return payload
+    raw_test_cases = payload.get("test_cases")
+    if not isinstance(raw_test_cases, list):
+        return payload
+    requirements_by_id = {
+        _text(requirement.get("requirement_id")): requirement
+        for requirement in requirements
+        if isinstance(requirement, dict) and _text(requirement.get("requirement_id"))
+    }
+    enriched_test_cases: list[Any] = []
+    for raw_test_case in raw_test_cases:
+        if not isinstance(raw_test_case, dict):
+            enriched_test_cases.append(raw_test_case)
+            continue
+        requirement = requirements_by_id.get(_text(raw_test_case.get("requirement_id")))
+        source_review_ids = (
+            source_review_ids_for_requirement(requirement, findings_by_id)
+            if requirement
+            else []
+        )
+        enriched_test_cases.append({**raw_test_case, "source_review_ids": source_review_ids})
+    return {**payload, "test_cases": enriched_test_cases}
+
+
+def source_review_ids_for_requirement(
+    requirement: dict[str, Any] | None,
+    findings_by_id: dict[str, dict[str, Any]],
+) -> list[str]:
+    if not requirement:
+        return []
+    source_review_ids: set[str] = set()
+    for finding_id in _list_text(requirement.get("finding_ids")):
+        finding = findings_by_id.get(finding_id)
+        if finding:
+            source_review_ids.update(_list_text(finding.get("review_ids")))
+    return sorted(source_review_ids)
+
+
+def _validate_source_review_ids(
+    *,
+    prefix: str,
+    requirement: dict[str, Any],
+    source_review_ids: list[str],
+    has_source_review_ids: bool,
+    findings_by_id: dict[str, dict[str, Any]],
+    valid_review_ids: set[str],
+    traceability_errors: list[str],
+) -> None:
+    if not has_source_review_ids:
+        traceability_errors.append(f"{prefix}: missing source_review_ids")
+        return
+    if valid_review_ids:
+        for review_id in source_review_ids:
+            if review_id not in valid_review_ids:
+                traceability_errors.append(f"{prefix}: source_review_ids references unknown review_id {review_id}")
+    if not findings_by_id:
+        return
+    expected_review_ids = set(source_review_ids_for_requirement(requirement, findings_by_id))
+    if expected_review_ids and not source_review_ids:
+        traceability_errors.append(f"{prefix}: source_review_ids must include review evidence from requirement findings")
+        return
+    unrelated_review_ids = sorted(set(source_review_ids) - expected_review_ids)
+    if unrelated_review_ids:
+        traceability_errors.append(
+            f"{prefix}: source_review_ids outside requirement finding evidence {unrelated_review_ids}"
+        )
+    if expected_review_ids and not set(source_review_ids).intersection(expected_review_ids):
+        traceability_errors.append(f"{prefix}: source_review_ids do not match requirement finding evidence")
+
+
 def _fail(
     status: str,
     errors: list[str],
@@ -361,6 +472,7 @@ def _fail(
     generic_test_case_errors: list[str] | None = None,
     traceability_errors: list[str] | None = None,
     scope_overreach_errors: list[str] | None = None,
+    duplicate_source_review_ids: list[str] | None = None,
 ) -> TestCaseValidationResult:
     return TestCaseValidationResult(
         status=status,
@@ -377,6 +489,7 @@ def _fail(
         generic_test_case_errors=generic_test_case_errors or [],
         traceability_errors=traceability_errors or [],
         scope_overreach_errors=scope_overreach_errors or [],
+        duplicate_source_review_ids=duplicate_source_review_ids or [],
     )
 
 
@@ -420,3 +533,24 @@ def _list_text(value: Any) -> list[str]:
 
 def _text(value: Any) -> str:
     return value.strip() if isinstance(value, str) else ""
+
+
+def _stable_unique(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    result: list[str] = []
+    for item in items:
+        if item and item not in seen:
+            seen.add(item)
+            result.append(item)
+    return result
+
+
+def _duplicates(items: list[str]) -> set[str]:
+    seen: set[str] = set()
+    duplicates: set[str] = set()
+    for item in items:
+        if item in seen:
+            duplicates.add(item)
+        else:
+            seen.add(item)
+    return duplicates

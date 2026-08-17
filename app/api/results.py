@@ -386,6 +386,9 @@ def _traceability_graph(
     test_case_to_requirement = {
         _text(test_case.get("test_case_id")): _text(test_case.get("requirement_id")) for test_case in test_cases
     }
+    test_case_to_reviews = {
+        _text(test_case.get("test_case_id")): _list_text(test_case.get("source_review_ids")) for test_case in test_cases
+    }
     return {
         "review_ids": review_ids,
         "topic_to_reviews": topic_to_reviews,
@@ -397,6 +400,7 @@ def _traceability_graph(
         "version_to_requirements": version_to_requirements,
         "prd_to_requirements": prd_to_requirements,
         "test_case_to_requirement": test_case_to_requirement,
+        "test_case_to_reviews": test_case_to_reviews,
         "review_to_topics": _invert_many(topic_to_reviews),
         "topic_to_issues": _invert_many(issue_to_topics),
         "issue_to_findings": _invert_many(finding_to_issues),
@@ -404,6 +408,7 @@ def _traceability_graph(
         "requirement_to_versions": _invert_many(version_to_requirements),
         "requirement_to_prds": _invert_many(prd_to_requirements),
         "requirement_to_test_cases": _invert_one(test_case_to_requirement),
+        "review_to_test_cases": _invert_many(test_case_to_reviews),
     }
 
 

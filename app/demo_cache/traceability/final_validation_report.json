@@ -176,5 +176,6 @@
   "submission_validation_status": "pending",
   "submission_blockers": [
     "R. UI readiness"
-  ]
+  ],
+  "explicit_test_case_review_link": "PASS"
 }

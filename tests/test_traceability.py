@@ -12,6 +12,7 @@ class TraceabilityGraphTests(unittest.TestCase):
         self.assertEqual(result.forward_traceability, STATUS_PASS)
         self.assertEqual(result.backward_traceability, STATUS_PASS)
         self.assertEqual(result.evidence_traceability, STATUS_PASS)
+        self.assertEqual(result.explicit_test_case_review_link, STATUS_PASS)
         self.assertEqual(result.version_prd_consistency, STATUS_PASS)
         self.assertEqual(result.ac_structural_coverage, STATUS_PASS)
         self.assertEqual(graph.topics_for_review("review-1")[0]["topic_id"], "TOPIC-001")
@@ -221,6 +222,7 @@ def _artifacts() -> TraceabilityArtifacts:
                 "expected_result": "Subscription price is visible before purchase.",
                 "test_type": "functional",
                 "priority": "P1",
+                "source_review_ids": ["review-1"],
             }
         ],
         test_case_validation={"status": "Success", "passed": True},

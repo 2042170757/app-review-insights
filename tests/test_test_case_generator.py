@@ -19,7 +19,9 @@ class TestCaseGeneratorTests(unittest.TestCase):
 
         self.assertEqual(len(payload["test_cases"]), 3)
         self.assertEqual(payload["test_cases"][0]["acceptance_criteria_ids"], ["REQ-001-AC-1"])
+        self.assertEqual(payload["test_cases"][0]["source_review_ids"], ["review-001"])
         self.assertEqual(payload["test_cases"][2]["acceptance_criteria_ids"], ["REQ-002-AC-1"])
+        self.assertEqual(payload["test_cases"][2]["source_review_ids"], ["review-002"])
 
     def test_generate_test_cases_with_mock_provider(self) -> None:
         provider = create_mock_provider(build_default_mock_output(_requirements()))
@@ -40,6 +42,7 @@ class TestCaseGeneratorTests(unittest.TestCase):
         self.assertTrue(result.validation.passed)
         self.assertEqual(result.provider, "mock")
         self.assertEqual(len(result.test_cases), 3)
+        self.assertEqual(result.test_cases[0]["source_review_ids"], ["review-001"])
         self.assertEqual(result.coverage.requirement_coverage, 100.0)
         self.assertEqual(result.coverage.acceptance_criteria_coverage, 100.0)
 
@@ -159,12 +162,14 @@ def _requirements() -> list[dict]:
             "finding_ids": ["FINDING-001"],
             "acceptance_criteria": ["Free access is visible.", "Free access limits are explained."],
             "priority": "P1",
+            "source_review_ids": ["review-001"],
         },
         {
             "requirement_id": "REQ-002",
             "finding_ids": ["FINDING-002"],
             "acceptance_criteria": ["Subscription value is explained."],
             "priority": "P2",
+            "source_review_ids": ["review-002"],
         },
     ]
 

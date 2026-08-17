@@ -15,10 +15,12 @@ class TestCaseSchemaTests(unittest.TestCase):
             expected_result="The free access criterion is satisfied.",
             test_type="functional",
             priority="P1",
+            source_review_ids=["review-001"],
         )
 
         self.assertEqual(test_case.test_case_id, "TC-001")
         self.assertEqual(test_case.test_type, "functional")
+        self.assertEqual(test_case.source_review_ids, ["review-001"])
 
     def test_generation_output_dataclass(self) -> None:
         output = TestCaseGenerationOutput(test_cases=[])
@@ -32,6 +34,7 @@ class TestCaseSchemaTests(unittest.TestCase):
         self.assertIn("requirement_id", required)
         self.assertIn("acceptance_criteria_ids", required)
         self.assertIn("expected_result", required)
+        self.assertIn("source_review_ids", required)
         self.assertIn("functional", VALID_TEST_TYPES)
 
 

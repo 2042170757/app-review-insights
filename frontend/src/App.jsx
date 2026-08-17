@@ -932,6 +932,10 @@ function TestCases({ results, setSelectedEntity }) {
             <ListBlock title="Preconditions" items={testCase.preconditions} />
             <ListBlock title="Steps" items={testCase.steps} />
             <p className="expected-result">{testCase.expected_result}</p>
+            <SourceReviews
+              reviewIds={testCase.source_review_ids}
+              onSelect={(id) => setSelectedEntity({ type: 'review', id })}
+            />
           </article>
         ))}
       </div>
@@ -974,6 +978,26 @@ function Traceability({ results, lookup, setSelectedEntity }) {
   )
 }
 
+function SourceReviews({ reviewIds, onSelect }) {
+  const ids = listOf(reviewIds)
+  return (
+    <section className="source-reviews-block">
+      <h4>Source Reviews</h4>
+      {ids.length ? (
+        <div className="id-cloud compact-cloud">
+          {ids.map((id) => (
+            <button type="button" className="id-chip" key={id} onClick={() => onSelect(id)}>
+              {id}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="muted">No source reviews linked.</p>
+      )}
+    </section>
+  )
+}
+
 function Validation({ results, runState }) {
   const validation = results.validation?.validation || {}
   const metadata = results.validation?.metadata || {}
@@ -1000,6 +1024,7 @@ function Validation({ results, runState }) {
         <Metric label="Forward Traceability" value={validation.forward_traceability || 'pending'} />
         <Metric label="Backward Traceability" value={validation.backward_traceability || 'pending'} />
         <Metric label="Evidence Traceability" value={validation.evidence_traceability || 'pending'} />
+        <Metric label="Test Case -> Review Link" value={validation.explicit_test_case_review_link || 'pending'} />
         <Metric label="Artifact Consistency" value={validation.artifact_consistency || 'pending'} />
         <Metric label="AI / Deterministic Boundary" value={validation.ai_deterministic_boundary || 'pending'} />
         <Metric label="Statistics / Model Separation" value={validation.statistics_model_separation || 'pending'} />
@@ -1497,6 +1522,7 @@ function buildChain(selectedEntity, graph) {
     const issueIds = topicIds.flatMap((topicId) => graph.topic_to_issues?.[topicId] || [])
     const findingIds = issueIds.flatMap((issueId) => graph.issue_to_findings?.[issueId] || [])
     const reqIds = findingIds.flatMap((findingId) => graph.finding_to_requirements?.[findingId] || [])
+    const testCaseIds = graph.review_to_test_cases?.[id] || reqIds.flatMap((reqId) => graph.requirement_to_test_cases?.[reqId] || [])
     return [
       { type: 'review', label: 'Review', id },
       ...add(topicIds, 'topic', 'Topic'),
@@ -1505,7 +1531,7 @@ function buildChain(selectedEntity, graph) {
       ...add(reqIds, 'requirement', 'Requirement'),
       ...add(reqIds.flatMap((reqId) => graph.requirement_to_versions?.[reqId] || []), 'version', 'Version'),
       ...add(reqIds.flatMap((reqId) => graph.requirement_to_prds?.[reqId] || []), 'prd', 'PRD'),
-      ...add(reqIds.flatMap((reqId) => graph.requirement_to_test_cases?.[reqId] || []), 'testCase', 'Test Case'),
+      ...add(unique(testCaseIds), 'testCase', 'Test Case'),
     ]
   }
   if (selectedEntity.type === 'topic') {
@@ -1538,7 +1564,11 @@ function buildChain(selectedEntity, graph) {
   }
   if (selectedEntity.type === 'testCase') {
     const reqId = graph.test_case_to_requirement?.[id]
-    return [{ type: 'testCase', label: 'Test Case', id }, ...(reqId ? [{ type: 'requirement', label: 'Requirement', id: reqId }] : [])]
+    return [
+      { type: 'testCase', label: 'Test Case', id },
+      ...(reqId ? [{ type: 'requirement', label: 'Requirement', id: reqId }] : []),
+      ...add(graph.test_case_to_reviews?.[id], 'review', 'Source Review'),
+    ]
   }
   return [{ ...selectedEntity, label: selectedEntity.type }]
 }
@@ -1550,6 +1580,7 @@ function evidenceReviewIds(selectedEntity, entity, graph) {
   if (selectedEntity.type === 'topic') return graph.topic_to_reviews?.[selectedEntity.id] || []
   if (selectedEntity.type === 'issue') return graph.issue_to_reviews?.[selectedEntity.id] || []
   if (selectedEntity.type === 'finding') return graph.finding_to_reviews?.[selectedEntity.id] || []
+  if (selectedEntity.type === 'testCase') return graph.test_case_to_reviews?.[selectedEntity.id] || entity?.source_review_ids || []
   return []
 }
 

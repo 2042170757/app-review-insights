@@ -60,6 +60,7 @@ class TraceabilityAuditResult:
     backward_traceability: str
     artifact_consistency: str
     evidence_traceability: str
+    explicit_test_case_review_link: str
     version_prd_consistency: str
     ac_structural_coverage: str
     orphan_summary: dict[str, list[str]] = field(default_factory=dict)
@@ -79,6 +80,7 @@ class TraceabilityAuditResult:
                 self.backward_traceability,
                 self.artifact_consistency,
                 self.evidence_traceability,
+                self.explicit_test_case_review_link,
                 self.version_prd_consistency,
                 self.ac_structural_coverage,
             )
@@ -181,6 +183,7 @@ class TraceabilityGraph:
         issue_ids: set[str] = set()
         topic_ids: set[str] = set()
         review_ids: set[str] = set()
+        explicit_review_ids = _id_list(test_case.get("source_review_ids"))
         for finding_id in finding_ids:
             finding = self.findings_by_id.get(finding_id, {})
             review_ids.update(_id_list(finding.get("review_ids")))
@@ -198,7 +201,7 @@ class TraceabilityGraph:
             finding_ids=sorted(finding_ids),
             issue_ids=sorted(issue_ids),
             topic_ids=sorted(topic_ids),
-            review_ids=sorted(review_ids),
+            review_ids=sorted(explicit_review_ids or review_ids),
         )
 
     def validate(self) -> TraceabilityAuditResult:
@@ -213,6 +216,7 @@ class TraceabilityGraph:
         version_prd_errors = self._version_prd_errors()
         artifact_errors, artifact_warnings, coverage = self._artifact_consistency()
         evidence_errors = self._evidence_traceability_errors(test_case_paths)
+        explicit_review_link_errors = self._explicit_test_case_review_link_errors()
         ac_errors = self._acceptance_criteria_errors()
 
         errors.extend(forward_errors)
@@ -220,6 +224,7 @@ class TraceabilityGraph:
         errors.extend(version_prd_errors)
         errors.extend(artifact_errors)
         errors.extend(evidence_errors)
+        errors.extend(explicit_review_link_errors)
         errors.extend(ac_errors)
         warnings.extend(artifact_warnings)
 
@@ -228,6 +233,7 @@ class TraceabilityGraph:
             backward_traceability=STATUS_PASS if not backward_errors else STATUS_FAIL,
             artifact_consistency=STATUS_PASS if not artifact_errors else STATUS_FAIL,
             evidence_traceability=STATUS_PASS if not evidence_errors else STATUS_FAIL,
+            explicit_test_case_review_link=STATUS_PASS if not explicit_review_link_errors else STATUS_FAIL,
             version_prd_consistency=STATUS_PASS if not version_prd_errors else STATUS_FAIL,
             ac_structural_coverage=STATUS_PASS if not ac_errors else STATUS_FAIL,
             orphan_summary=orphan_summary,
@@ -436,6 +442,34 @@ class TraceabilityGraph:
             for review_id in path.review_ids:
                 if review_id not in self.reviews_by_id:
                     errors.append(f"{path.test_case_id}: unknown reachable review {review_id}")
+        return errors
+
+    def _explicit_test_case_review_link_errors(self) -> list[str]:
+        errors: list[str] = []
+        for test_case_id, test_case in self.test_cases_by_id.items():
+            if "source_review_ids" not in test_case:
+                errors.append(f"{test_case_id}: missing source_review_ids")
+                continue
+            source_review_ids = _id_list(test_case.get("source_review_ids"))
+            requirement = self.requirements_by_id.get(_text(test_case.get("requirement_id")))
+            if not requirement:
+                continue
+            expected_review_ids: set[str] = set()
+            for finding_id in _id_list(requirement.get("finding_ids")):
+                finding = self.findings_by_id.get(finding_id)
+                if finding:
+                    expected_review_ids.update(_id_list(finding.get("review_ids")))
+            if expected_review_ids and not source_review_ids:
+                errors.append(f"{test_case_id}: source_review_ids must include requirement finding review evidence")
+                continue
+            for review_id in source_review_ids:
+                if review_id not in self.reviews_by_id:
+                    errors.append(f"{test_case_id}: source_review_ids references unknown review_id {review_id}")
+            outside_review_ids = sorted(set(source_review_ids) - expected_review_ids)
+            if expected_review_ids and outside_review_ids:
+                errors.append(f"{test_case_id}: source_review_ids outside requirement finding evidence {outside_review_ids}")
+            if expected_review_ids and not set(source_review_ids).intersection(expected_review_ids):
+                errors.append(f"{test_case_id}: source_review_ids do not match requirement finding evidence")
         return errors
 
     def _acceptance_criteria_errors(self) -> list[str]:
