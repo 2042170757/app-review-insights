@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict
+from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -26,13 +26,27 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DOTENV_PATH = PROJECT_ROOT / ".env"
 
 
+@dataclass(frozen=True)
+class ApifySmokeStatuses:
+    authentication: str
+    provider_dependency: str
+    actor_run: str
+    dataset_retrieval: str
+    reviews: str
+
+
 def main() -> int:
     load_apify_environment()
     token = os.environ.get(APIFY_API_TOKEN)
     if not token:
         result = _missing_token_result()
         raw_path, normalized_path, metadata_path = save_apify_artifacts(result)
-        print("Authentication: FAIL")
+        statuses = determine_smoke_statuses(result, token_present=False)
+        print(f"Authentication: {statuses.authentication}")
+        print(f"Provider Dependency: {statuses.provider_dependency}")
+        print(f"Actor Run: {statuses.actor_run}")
+        print(f"Dataset Retrieval: {statuses.dataset_retrieval}")
+        print(f"Reviews: {statuses.reviews}")
         print("Failure Type: missing token")
         print(f"Missing environment variable: {APIFY_API_TOKEN}")
         print(f"raw_response: {raw_path}")
@@ -51,13 +65,13 @@ def main() -> int:
     result = provider.fetch_reviews(app_ref.apple_store_app_id, max_reviews=MAX_REVIEWS)
     raw_path, normalized_path, metadata_path = save_apify_artifacts(result)
 
-    authentication_status = "FAIL" if _has_error(result, "authentication failure") else "PASS"
-    actor_status = "FAIL" if _has_error(result, "actor run failure") else "PASS"
-    dataset_status = "FAIL" if _has_error(result, "dataset retrieval failure") else "PASS"
+    statuses = determine_smoke_statuses(result, token_present=True)
 
-    print(f"Authentication: {authentication_status}")
-    print(f"Actor Run: {actor_status}")
-    print(f"Dataset Retrieval: {dataset_status}")
+    print(f"Authentication: {statuses.authentication}")
+    print(f"Provider Dependency: {statuses.provider_dependency}")
+    print(f"Actor Run: {statuses.actor_run}")
+    print(f"Dataset Retrieval: {statuses.dataset_retrieval}")
+    print(f"Reviews: {statuses.reviews}")
     print(f"actual_count: {len(result.reviews)}")
     print(f"raw_response: {raw_path}")
     print(f"normalized_reviews: {normalized_path}")
@@ -83,6 +97,117 @@ def main() -> int:
 def _has_error(result: object, phrase: str) -> bool:
     errors = getattr(result, "errors", [])
     return any(phrase in ((error.message or "") + " " + (error.raw_error or "")).lower() for error in errors)
+
+
+def determine_smoke_statuses(
+    result: ApifyReviewFetchResult,
+    *,
+    token_present: bool,
+) -> ApifySmokeStatuses:
+    if not token_present:
+        return ApifySmokeStatuses(
+            authentication="FAIL",
+            provider_dependency="SKIPPED",
+            actor_run="SKIPPED",
+            dataset_retrieval="SKIPPED",
+            reviews="SKIPPED",
+        )
+
+    if _has_error(result, "missing dependency"):
+        return ApifySmokeStatuses(
+            authentication="PASS",
+            provider_dependency="FAIL",
+            actor_run="SKIPPED",
+            dataset_retrieval="SKIPPED",
+            reviews="SKIPPED",
+        )
+
+    if _has_error(result, "authentication failure"):
+        return ApifySmokeStatuses(
+            authentication="FAIL",
+            provider_dependency="PASS",
+            actor_run="SKIPPED",
+            dataset_retrieval="SKIPPED",
+            reviews="SKIPPED",
+        )
+
+    actor_failed = _has_error(result, "actor run failure") or _has_error(result, "network failure")
+    if actor_failed and not _has_dataset_id(result):
+        return ApifySmokeStatuses(
+            authentication="PASS",
+            provider_dependency="PASS",
+            actor_run="FAIL",
+            dataset_retrieval="SKIPPED",
+            reviews="SKIPPED",
+        )
+
+    if not _actor_succeeded(result):
+        return ApifySmokeStatuses(
+            authentication="PASS",
+            provider_dependency="PASS",
+            actor_run="SKIPPED",
+            dataset_retrieval="SKIPPED",
+            reviews="SKIPPED",
+        )
+
+    if _has_error(result, "dataset retrieval failure") or (
+        _has_error(result, "network failure") and _has_dataset_id(result)
+    ):
+        return ApifySmokeStatuses(
+            authentication="PASS",
+            provider_dependency="PASS",
+            actor_run="PASS",
+            dataset_retrieval="FAIL",
+            reviews="SKIPPED",
+        )
+
+    if not _has_dataset_id(result):
+        return ApifySmokeStatuses(
+            authentication="PASS",
+            provider_dependency="PASS",
+            actor_run="PASS",
+            dataset_retrieval="SKIPPED",
+            reviews="SKIPPED",
+        )
+
+    if result.reviews:
+        return ApifySmokeStatuses(
+            authentication="PASS",
+            provider_dependency="PASS",
+            actor_run="PASS",
+            dataset_retrieval="PASS",
+            reviews="PASS",
+        )
+
+    if _has_error(result, "empty dataset"):
+        return ApifySmokeStatuses(
+            authentication="PASS",
+            provider_dependency="PASS",
+            actor_run="PASS",
+            dataset_retrieval="PASS",
+            reviews="EMPTY",
+        )
+
+    return ApifySmokeStatuses(
+        authentication="PASS",
+        provider_dependency="PASS",
+        actor_run="PASS",
+        dataset_retrieval="PASS",
+        reviews="SKIPPED",
+    )
+
+
+def _actor_succeeded(result: ApifyReviewFetchResult) -> bool:
+    metadata = result.dataset_metadata
+    if not metadata:
+        return False
+    status = (metadata.actor_status or "").upper()
+    return status == "SUCCEEDED"
+
+
+def _has_dataset_id(result: ApifyReviewFetchResult) -> bool:
+    metadata = result.dataset_metadata
+    return bool(metadata and metadata.dataset_id)
 
 
 def load_apify_environment(dotenv_path: Path = DOTENV_PATH) -> bool:

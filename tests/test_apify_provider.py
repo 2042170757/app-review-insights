@@ -4,7 +4,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
-from app.apify_smoke_test import APIFY_API_TOKEN, load_apify_environment
+from app.apify_smoke_test import APIFY_API_TOKEN, determine_smoke_statuses, load_apify_environment
 from app.apify_provider import (
     APIFY_ACTOR_ID,
     ApifyReviewProvider,
@@ -158,6 +158,81 @@ class ApifyReviewProviderTests(unittest.TestCase):
         self.assertEqual(len(result.reviews), 0)
         self.assertTrue(result.errors)
         self.assertIn("Apify dataset returned no review rows.", result.errors[0].message)
+        statuses = determine_smoke_statuses(result, token_present=True)
+        self.assertEqual(statuses.authentication, "PASS")
+        self.assertEqual(statuses.provider_dependency, "PASS")
+        self.assertEqual(statuses.actor_run, "PASS")
+        self.assertEqual(statuses.dataset_retrieval, "PASS")
+        self.assertEqual(statuses.reviews, "EMPTY")
+
+    def test_missing_dependency_statuses_without_real_api(self) -> None:
+        class MissingDependencyProvider(ApifyReviewProvider):
+            def _build_client(self):
+                raise ImportError("No module named 'apify_client'")
+
+        result = MissingDependencyProvider(api_token="token").fetch_reviews("839285684", max_reviews=50)
+        statuses = determine_smoke_statuses(result, token_present=True)
+
+        self.assertEqual(statuses.authentication, "PASS")
+        self.assertEqual(statuses.provider_dependency, "FAIL")
+        self.assertEqual(statuses.actor_run, "SKIPPED")
+        self.assertEqual(statuses.dataset_retrieval, "SKIPPED")
+        self.assertEqual(statuses.reviews, "SKIPPED")
+
+    def test_actor_run_exception_statuses_without_real_api(self) -> None:
+        class ActorFailureProvider(ApifyReviewProvider):
+            def _build_client(self):
+                class ActorClient:
+                    def call(self, run_input):
+                        raise RuntimeError("actor failed")
+
+                class Client:
+                    def actor(self, actor_id):
+                        return ActorClient()
+
+                return Client()
+
+        result = ActorFailureProvider(api_token="token").fetch_reviews("839285684", max_reviews=50)
+        statuses = determine_smoke_statuses(result, token_present=True)
+
+        self.assertEqual(statuses.authentication, "PASS")
+        self.assertEqual(statuses.provider_dependency, "PASS")
+        self.assertEqual(statuses.actor_run, "FAIL")
+        self.assertEqual(statuses.dataset_retrieval, "SKIPPED")
+        self.assertEqual(statuses.reviews, "SKIPPED")
+
+    def test_dataset_retrieval_exception_statuses_without_real_api(self) -> None:
+        class DatasetFailureProvider(ApifyReviewProvider):
+            def _build_client(self):
+                class ActorClient:
+                    def call(self, run_input):
+                        return {
+                            "id": "run-1",
+                            "status": "SUCCEEDED",
+                            "defaultDatasetId": "dataset-1",
+                        }
+
+                class DatasetClient:
+                    def iterate_items(self):
+                        raise RuntimeError("dataset failed")
+
+                class Client:
+                    def actor(self, actor_id):
+                        return ActorClient()
+
+                    def dataset(self, dataset_id):
+                        return DatasetClient()
+
+                return Client()
+
+        result = DatasetFailureProvider(api_token="token").fetch_reviews("839285684", max_reviews=50)
+        statuses = determine_smoke_statuses(result, token_present=True)
+
+        self.assertEqual(statuses.authentication, "PASS")
+        self.assertEqual(statuses.provider_dependency, "PASS")
+        self.assertEqual(statuses.actor_run, "PASS")
+        self.assertEqual(statuses.dataset_retrieval, "FAIL")
+        self.assertEqual(statuses.reviews, "SKIPPED")
 
     def test_pydantic_style_actor_run_response_without_real_api(self) -> None:
         class RunModel:
@@ -206,6 +281,12 @@ class ApifyReviewProviderTests(unittest.TestCase):
         self.assertIsNotNone(result.dataset_metadata)
         assert result.dataset_metadata is not None
         self.assertEqual(result.dataset_metadata.dataset_id, "dataset-1")
+        statuses = determine_smoke_statuses(result, token_present=True)
+        self.assertEqual(statuses.authentication, "PASS")
+        self.assertEqual(statuses.provider_dependency, "PASS")
+        self.assertEqual(statuses.actor_run, "PASS")
+        self.assertEqual(statuses.dataset_retrieval, "PASS")
+        self.assertEqual(statuses.reviews, "PASS")
 
     def test_error_mapping(self) -> None:
         self.assertEqual(classify_apify_exception(Exception("401 Unauthorized")), "authentication failure")
