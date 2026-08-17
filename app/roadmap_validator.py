@@ -6,6 +6,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from app.product_scope import validate_product_scope
 from app.requirement_schema import VALID_PRIORITIES
 from app.version_schema import VALID_VERSION_IDS, Version
 
@@ -26,6 +27,7 @@ STATUS_VERSION_REQUIREMENT_MISMATCH = "Version Requirement Mismatch"
 STATUS_EMPTY_VERSION = "Empty Version"
 STATUS_DEFERRED_REASON_MISSING = "Deferred Reason Missing"
 STATUS_VERSION_GOAL_INCOHERENCE = "Version Goal Incoherence"
+STATUS_UNSUPPORTED_PRODUCT_DIRECTION = "Unsupported Product Direction"
 STATUS_DEPENDENCY_CHANGED = "Dependency Changed"
 
 VERSION_ORDER = {"V1": 1, "V2": 2, "V3": 3, "Deferred": 4}
@@ -51,6 +53,7 @@ class RoadmapValidationResult:
     deferred_reason_errors: list[str] = field(default_factory=list)
     deferred_rationale: dict[str, str] = field(default_factory=dict)
     version_goal_errors: list[str] = field(default_factory=list)
+    unsupported_scope_errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -211,6 +214,7 @@ def validate_roadmap_payload(
             )
     empty_version_ids = [version.version_id for version in versions if version.version_id != "Deferred" and not version.requirement_ids]
     goal_errors = _version_goal_errors(versions, requirements_by_id) if enforce_product_quality else []
+    unsupported_scope_errors = _unsupported_product_scope_errors(versions, requirements_by_id) if enforce_product_quality else []
 
     if duplicate_requirement_ids:
         return _fail(
@@ -273,6 +277,12 @@ def validate_roadmap_payload(
             STATUS_VERSION_GOAL_INCOHERENCE,
             goal_errors,
             version_goal_errors=goal_errors,
+        )
+    if unsupported_scope_errors:
+        return _fail(
+            STATUS_UNSUPPORTED_PRODUCT_DIRECTION,
+            unsupported_scope_errors,
+            unsupported_scope_errors=unsupported_scope_errors,
         )
 
     if version_requirement_mismatches:
@@ -450,10 +460,11 @@ def _version_goal_errors(versions: list[Version], requirements_by_id: dict[str, 
     for version in versions:
         if version.version_id == "Deferred" or not version.requirement_ids:
             continue
-        goal_text = f"{version.name} {version.goal} {version.rationale}".lower()
+        goal_text = f"{version.name} {version.goal}".lower()
         if any(term in goal_text for term in generic_terms):
             errors.append(f"{version.version_id}: version goal is too priority-bucket oriented")
             continue
+        version_text = f"{version.name} {version.goal} {version.rationale}".lower()
         requirement_text = " ".join(
             f"{requirements_by_id.get(requirement_id, {}).get('title', '')} "
             f"{requirements_by_id.get(requirement_id, {}).get('description', '')}"
@@ -467,10 +478,33 @@ def _version_goal_errors(versions: list[Version], requirements_by_id: dict[str, 
             if any(term in requirement_text for term in terms)
         ]
         if len(version.requirement_ids) > 1 and len(matched_domains) > 1:
-            if not any(term in goal_text for domain in matched_domains for term in domain_terms[domain]):
+            if not any(term in version_text for domain in matched_domains for term in domain_terms[domain]):
                 errors.append(
                     f"{version.version_id}: mixed requirement domains are not explained by the version goal"
                 )
+    return errors
+
+
+def _unsupported_product_scope_errors(versions: list[Version], requirements_by_id: dict[str, dict[str, Any]]) -> list[str]:
+    errors: list[str] = []
+    for version in versions:
+        if version.version_id == "Deferred" or not version.requirement_ids:
+            continue
+        source_requirements = [
+            requirements_by_id[requirement_id]
+            for requirement_id in version.requirement_ids
+            if requirement_id in requirements_by_id
+        ]
+        candidate = {
+            "name": version.name,
+            "goal": version.goal,
+            "rationale": version.rationale,
+            "risks": version.risks,
+            "success_metrics": version.success_metrics,
+        }
+        scope = validate_product_scope(candidate, source_requirements)
+        for concept in scope.unsupported_concepts:
+            errors.append(f"{version.version_id}: unsupported product direction {concept}")
     return errors
 
 
@@ -489,6 +523,7 @@ def _fail(
     deferred_reason_errors: list[str] | None = None,
     deferred_rationale: dict[str, str] | None = None,
     version_goal_errors: list[str] | None = None,
+    unsupported_scope_errors: list[str] | None = None,
 ) -> RoadmapValidationResult:
     return RoadmapValidationResult(
         status=status,
@@ -505,6 +540,7 @@ def _fail(
         deferred_reason_errors=deferred_reason_errors or [],
         deferred_rationale=deferred_rationale or {},
         version_goal_errors=version_goal_errors or [],
+        unsupported_scope_errors=unsupported_scope_errors or [],
     )
 
 

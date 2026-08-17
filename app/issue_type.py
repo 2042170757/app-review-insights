@@ -42,6 +42,12 @@ def classify_issue(issue: dict[str, Any]) -> IssueClassification:
         ]
     ).lower()
 
+    if _contains_any(text, STRONG_PROBLEM_SIGNALS):
+        return IssueClassification(
+            issue_id=issue_id,
+            issue_type=ISSUE_TYPE_PROBLEM,
+            classification_reason="Issue language describes a clear lack, failure, or unmet expected outcome.",
+        )
     if _contains_any(text, POSITIVE_SIGNALS) and not _contains_any(text, PROBLEM_SIGNALS):
         return IssueClassification(
             issue_id=issue_id,
@@ -113,6 +119,23 @@ PROBLEM_SIGNALS = {
     "injury",
     "not respecting",
     "lacking",
+}
+
+STRONG_PROBLEM_SIGNALS = {
+    "lack of",
+    "lacks",
+    "not feeling",
+    "does not",
+    "doesn't",
+    "did not",
+    "didn't",
+    "no result",
+    "no results",
+    "not effective",
+    "failed",
+    "failure",
+    "gap in",
+    "unmet",
 }
 
 NEUTRAL_SIGNALS = {

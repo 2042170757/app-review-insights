@@ -59,6 +59,21 @@ class IssueTypeTests(unittest.TestCase):
         self.assertEqual(result.issue_id, "ISSUE-007")
         self.assertEqual(result.issue_type, ISSUE_TYPE_POSITIVE_FEEDBACK)
 
+    def test_lack_of_targeted_results_is_problem_not_positive_feedback(self) -> None:
+        result = classify_issue(
+            _issue(
+                issue_id="ISSUE-012",
+                name="Lack of targeted results",
+                description=(
+                    "A user reports not feeling the workout in the intended area, "
+                    "suggesting a potential gap in effectiveness for specific goals."
+                ),
+                merge_rationale="Single topic representing a distinct concern about lack of targeted results.",
+            )
+        )
+
+        self.assertEqual(result.issue_type, ISSUE_TYPE_PROBLEM)
+
     def test_neutral_observation_classification(self) -> None:
         result = classify_issue(
             _issue(

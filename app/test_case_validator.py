@@ -6,6 +6,7 @@ import json
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from app.product_scope import validate_product_scope
 from app.requirement_schema import VALID_PRIORITIES
 from app.test_case_schema import TestCase, VALID_TEST_TYPES
 from app.test_coverage import TestCoverageReport, build_acceptance_criteria_index, calculate_test_coverage
@@ -234,9 +235,18 @@ def validate_test_case_payload(
                 valid_review_ids=valid_review_ids,
                 traceability_errors=traceability_errors,
             )
-        scope_error = _scope_overreach_error(prefix, title, steps, expected_result, referenced_criteria_texts)
-        if scope_error:
-            scope_overreach_errors.append(scope_error)
+        if requirement_id in requirements_by_id:
+            scope_overreach_errors.extend(
+                _scope_overreach_errors(
+                    prefix,
+                    title,
+                    preconditions,
+                    steps,
+                    expected_result,
+                    requirement=requirements_by_id[requirement_id],
+                    criteria_texts=referenced_criteria_texts,
+                )
+            )
 
         if (
             test_case_id
@@ -500,20 +510,29 @@ def _is_generic_test_case(title: str, steps: list[str], expected_result: str) ->
     return any(phrase in combined for phrase in GENERIC_PHRASES)
 
 
-def _scope_overreach_error(prefix: str, title: str, steps: list[str], expected_result: str, criteria_texts: list[str]) -> str | None:
-    test_text = " ".join([title, *steps, expected_result]).lower()
-    criteria_text = " ".join(criteria_texts).lower()
-    overreach_terms = {
-        "refund": {"refund", "退款"},
-        "coupon": {"coupon", "discount", "promo", "优惠券", "折扣"},
-        "payment_failure": {"payment failed", "payment failure", "card declined", "支付失败"},
-        "new_plan": {"new membership", "new plan", "loyalty", "会员等级"},
-        "technical": {"api", "database", "endpoint", "sql", "react", "vue"},
+def _scope_overreach_errors(
+    prefix: str,
+    title: str,
+    preconditions: list[str],
+    steps: list[str],
+    expected_result: str,
+    *,
+    requirement: dict[str, Any],
+    criteria_texts: list[str],
+) -> list[str]:
+    candidate = {
+        "title": title,
+        "preconditions": preconditions,
+        "steps": steps,
+        "expected_result": expected_result,
     }
-    for label, terms in overreach_terms.items():
-        if any(term in test_text for term in terms) and not any(term in criteria_text for term in terms):
-            return f"{prefix}: scope overreach introduces {label}"
-    return None
+    allowed_scope = {
+        "requirement_title": requirement.get("title"),
+        "requirement_description": requirement.get("description"),
+        "acceptance_criteria": criteria_texts,
+    }
+    scope = validate_product_scope(candidate, allowed_scope)
+    return [f"{prefix}: scope overreach introduces {concept}" for concept in scope.unsupported_concepts]
 
 
 def _text_list(value: Any, field_name: str, errors: list[str], *, min_items: int) -> list[str]:

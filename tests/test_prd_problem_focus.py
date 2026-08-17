@@ -21,6 +21,8 @@ class PRDProblemFocusMetricTests(unittest.TestCase):
             success_metrics=[
                 "User-reported notification satisfaction",
                 "Number of user-reported freezes during export",
+                "User confusion reports about the shortcut decrease.",
+                "Sync-related data loss incidents decrease.",
             ]
         )
 
@@ -30,6 +32,22 @@ class PRDProblemFocusMetricTests(unittest.TestCase):
 
     def test_vague_satisfaction_metric_still_fails(self) -> None:
         payload = _payload(success_metrics=["Improve user satisfaction"])
+
+        result = _validate(payload)
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_SUCCESS_METRIC_INVALID)
+
+    def test_satisfaction_improves_metric_still_fails(self) -> None:
+        payload = _payload(success_metrics=["User satisfaction with support improves."])
+
+        result = _validate(payload)
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_SUCCESS_METRIC_INVALID)
+
+    def test_standalone_feedback_metric_still_fails(self) -> None:
+        payload = _payload(success_metrics=["User feedback on clarity of quick capture shortcut"])
 
         result = _validate(payload)
 
@@ -111,6 +129,12 @@ class PRDProblemFocusMetricTests(unittest.TestCase):
         self.assertTrue(result.validation.passed)
         self.assertEqual(result.prds[0]["success_metrics"], ["User satisfaction score with workout content"])
 
+    def test_prd_prompt_rejects_standalone_satisfaction_improves_metric(self) -> None:
+        request = build_prd_request_for_test()
+
+        self.assertIn("user satisfaction with support improves", request.system_prompt)
+        self.assertIn("do not include it in success_metrics", request.user_prompt)
+
     def test_positive_focus_empty_metrics_still_passes(self) -> None:
         payload = _payload(
             success_metrics=[],
@@ -139,6 +163,18 @@ def _validate(payload: dict, *, requirements_by_id: dict | None = None):
         requirement_validation_passed=True,
         roadmap_validation_passed=True,
         finding_validation_passed=True,
+    )
+
+
+def build_prd_request_for_test():
+    from app.prd_generator import build_prd_request
+
+    return build_prd_request(
+        requirements=list(_requirements_by_id().values()),
+        roadmap=_roadmap(),
+        findings=list(_findings_by_id().values()),
+        evidence_report={},
+        analysis_goal="基于已验证 Roadmap Version、Requirements、Findings 与 Evidence 生成 PRD。",
     )
 
 

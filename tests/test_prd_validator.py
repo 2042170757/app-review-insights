@@ -141,6 +141,63 @@ class PRDValidatorTests(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertEqual(result.status, STATUS_UNSUPPORTED_PRODUCT_DIRECTION)
 
+    def test_imported_dataset_prd_scope_is_not_limited_to_fixed_domains(self) -> None:
+        payload = {
+            "prds": [
+                {
+                    "prd_id": "PRD-V1",
+                    "version_id": "V3",
+                    "title": "PDF export reliability",
+                    "overview": "Improve PDF export reliability and prevent freezes for standard projects.",
+                    "problem_statement": "Users report slow PDF export and freezing during export.",
+                    "evidence_summary": "Evidence is traceable through REQ-004 and FINDING-003.",
+                    "goals": ["Improve PDF export reliability."],
+                    "non_goals": ["Do not add unrelated export formats."],
+                    "requirement_ids": ["REQ-004"],
+                    "risks": ["Large projects may still require target definition."],
+                    "success_metrics": ["Average PDF export time for a standard project."],
+                    "open_questions": ["What target average PDF export time should define success?"],
+                }
+            ]
+        }
+        requirements = _requirements_by_id_with_text()
+        requirements["REQ-004"] = {
+            "requirement_id": "REQ-004",
+            "finding_ids": ["FINDING-003"],
+            "title": "PDF export is slow and can freeze",
+            "description": "The product should provide a responsive and reliable PDF export experience.",
+            "acceptance_criteria": ["PDF export completes without freezing the user interface."],
+        }
+        versions = _versions_by_id()
+        versions["V3"] = {
+            "version_id": "V3",
+            "goal": "Improve PDF export reliability.",
+            "requirement_ids": ["REQ-004"],
+        }
+        findings = _findings_by_id()
+        findings["FINDING-003"] = {
+            "finding_id": "FINDING-003",
+            "issue_ids": ["ISSUE-003"],
+            "review_ids": ["review-004"],
+        }
+        issues = _issues_by_id()
+        issues["ISSUE-003"] = {"issue_id": "ISSUE-003", "topic_ids": ["TOPIC-003"], "review_ids": ["review-004"]}
+        topics = _topics_by_id()
+        topics["TOPIC-003"] = {"topic_id": "TOPIC-003", "review_ids": ["review-004"]}
+
+        result = _validate(
+            payload,
+            requirements_by_id=requirements,
+            versions_by_id=versions,
+            findings_by_id=findings,
+            issues_by_id=issues,
+            topics_by_id=topics,
+            valid_review_ids={"review-001", "review-002", "review-003", "review-004"},
+        )
+
+        self.assertTrue(result.passed)
+        self.assertEqual(result.status, STATUS_SUCCESS)
+
     def test_positive_workout_scope_is_supported(self) -> None:
         payload = {
             "prds": [
@@ -179,6 +236,23 @@ class PRDValidatorTests(unittest.TestCase):
     def test_non_goal_contains_technical_detail(self) -> None:
         payload = _payload()
         payload["prds"][0]["non_goals"] = ["Do not build a React component in this phase."]
+        result = _validate(payload)
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_PROHIBITED_IMPLEMENTATION_DETAIL)
+
+    def test_functionality_word_is_not_treated_as_function_code(self) -> None:
+        payload = _payload()
+        payload["prds"][0]["non_goals"] = ["Do not change the existing subscription functionality."]
+
+        result = _validate(payload)
+
+        self.assertTrue(result.passed)
+
+    def test_function_code_word_still_fails(self) -> None:
+        payload = _payload()
+        payload["prds"][0]["risks"] = ["The function call may need a new API endpoint."]
+
         result = _validate(payload)
 
         self.assertFalse(result.passed)
@@ -268,6 +342,7 @@ def _validate(
     findings_by_id: dict | None = None,
     issues_by_id: dict | None = None,
     topics_by_id: dict | None = None,
+    valid_review_ids: set[str] | None = None,
 ):
     return validate_prd_output(
         json.dumps(payload),
@@ -276,7 +351,7 @@ def _validate(
         findings_by_id=findings_by_id or _findings_by_id(),
         issues_by_id=issues_by_id or _issues_by_id(),
         topics_by_id=topics_by_id or _topics_by_id(),
-        valid_review_ids={"review-001", "review-002", "review-003"},
+        valid_review_ids=valid_review_ids or {"review-001", "review-002", "review-003"},
         requirement_validation_passed=True,
         roadmap_validation_passed=True,
         finding_validation_passed=True,

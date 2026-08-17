@@ -78,6 +78,82 @@ class TraceabilityGraphTests(unittest.TestCase):
 
         self.assertEqual(result.version_prd_consistency, STATUS_FAIL)
 
+    def test_deferred_requirement_is_expected_exclusion(self) -> None:
+        artifacts = _artifacts()
+        artifacts.requirements.append(
+            {
+                "requirement_id": "REQ-002",
+                "finding_ids": ["FINDING-001"],
+                "title": "Improve subscription support",
+                "description": "Improve subscription support.",
+                "acceptance_criteria": ["Support requests are acknowledged."],
+                "priority": "P3",
+                "priority_rationale": "Fixture.",
+                "risks": [],
+                "success_metrics": [],
+                "uncertainty": "Weak evidence.",
+                "source_review_ids": ["review-1"],
+            }
+        )
+        artifacts.roadmap["deferred_requirement_ids"] = ["REQ-002"]
+        artifacts.roadmap["deferred_rationale"] = {"REQ-002": "Evidence is too weak for the current roadmap."}
+        artifacts.test_coverage.update(
+            {
+                "total_requirements": 2,
+                "covered_requirements": 1,
+                "requirement_coverage": 50.0,
+                "total_acceptance_criteria": 2,
+                "covered_acceptance_criteria": 1,
+                "acceptance_criteria_coverage": 50.0,
+                "uncovered_requirement_ids": ["REQ-002"],
+                "uncovered_acceptance_criteria_ids": ["REQ-002-AC-1"],
+            }
+        )
+
+        result = TraceabilityGraph(artifacts).validate()
+
+        self.assertEqual(result.forward_traceability, STATUS_PASS)
+        self.assertEqual(result.ac_structural_coverage, STATUS_PASS)
+        self.assertNotIn("REQ-002", result.orphan_summary["orphan_requirements"])
+        self.assertNotIn("REQ-002-AC-1", result.orphan_summary["orphan_acceptance_criteria"])
+        self.assertIn("REQ-002: deferred from Roadmap with rationale", result.expected_exclusions)
+
+    def test_unassigned_requirement_still_fails_forward_traceability(self) -> None:
+        artifacts = _artifacts()
+        artifacts.requirements.append(
+            {
+                "requirement_id": "REQ-002",
+                "finding_ids": ["FINDING-001"],
+                "title": "Improve subscription support",
+                "description": "Improve subscription support.",
+                "acceptance_criteria": ["Support requests are acknowledged."],
+                "priority": "P3",
+                "priority_rationale": "Fixture.",
+                "risks": [],
+                "success_metrics": [],
+                "uncertainty": "Weak evidence.",
+                "source_review_ids": ["review-1"],
+            }
+        )
+        artifacts.test_coverage.update(
+            {
+                "total_requirements": 2,
+                "covered_requirements": 1,
+                "requirement_coverage": 50.0,
+                "total_acceptance_criteria": 2,
+                "covered_acceptance_criteria": 1,
+                "acceptance_criteria_coverage": 50.0,
+                "uncovered_requirement_ids": ["REQ-002"],
+                "uncovered_acceptance_criteria_ids": ["REQ-002-AC-1"],
+            }
+        )
+
+        result = TraceabilityGraph(artifacts).validate()
+
+        self.assertEqual(result.forward_traceability, STATUS_FAIL)
+        self.assertIn("REQ-002: no downstream version", result.errors)
+        self.assertIn("REQ-002: no downstream PRD", result.errors)
+
 
 def _artifacts() -> TraceabilityArtifacts:
     return TraceabilityArtifacts(

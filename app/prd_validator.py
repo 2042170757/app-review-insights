@@ -7,6 +7,7 @@ import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from app.product_scope import validate_product_scope
 from app.prd_schema import PRD
 
 
@@ -435,30 +436,9 @@ def _validate_unsupported_scope(
     requirement: dict[str, Any],
     unsupported_scope_errors: list[str],
 ) -> None:
-    source_text = " ".join(
-        [
-            _text(requirement.get("title")),
-            _text(requirement.get("description")),
-            " ".join(_list_text(requirement.get("acceptance_criteria"))),
-            " ".join(_list_text(requirement.get("success_metrics"))),
-            " ".join(_list_text(requirement.get("risks"))),
-        ]
-    )
-    requirement_domains = _domain_tokens(source_text)
-    prd_domains = _domain_tokens(prd_text)
-    if requirement_domains and prd_domains and not requirement_domains.intersection(prd_domains):
-        unsupported_scope_errors.append(f"{prefix}: PRD scope does not match requirement domain")
-    unsupported_phrases = {
-        "membership tier": "membership tier",
-        "loyalty program": "loyalty program",
-        "social network": "social network",
-        "marketplace": "marketplace",
-        "ai coach": "ai coach",
-    }
-    normalized = prd_text.lower()
-    for phrase in unsupported_phrases:
-        if phrase in normalized and phrase not in source_text.lower():
-            unsupported_scope_errors.append(f"{prefix}: unsupported product direction {phrase!r}")
+    scope = validate_product_scope(prd_text, requirement)
+    for concept in scope.unsupported_concepts:
+        unsupported_scope_errors.append(f"{prefix}: unsupported product direction {concept}")
 
 
 def _validate_required_open_questions(
@@ -573,7 +553,14 @@ def _mentions_any_id(text: str, ids: set[str]) -> bool:
 
 def _contains_technical_detail(value: str) -> bool:
     normalized = value.lower()
-    return any(term in normalized for term in TECHNICAL_TERMS)
+    for term in TECHNICAL_TERMS:
+        if term.startswith("."):
+            if term in normalized:
+                return True
+            continue
+        if re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", normalized):
+            return True
+    return False
 
 
 def _is_measurable_metric(value: str) -> bool:
@@ -589,7 +576,7 @@ def _is_measurable_metric(value: str) -> bool:
         return False
     return bool(
         re.search(
-            r"\d|%|percentage|ratio|rate|count|number|score|rating|survey|user-reported|time|duration|average|median|completion|retention|conversion|reduction|complaints|reviews",
+            r"\d|%|percentage|ratio|rate|count|number|score|rating|survey|user-reported|time|duration|average|median|completion|retention|conversion|increase|decrease|reduction|complaints|reports|incidents|reviews",
             normalized,
         )
     )

@@ -267,7 +267,12 @@ class TraceabilityGraph:
         linked_topic_ids = {topic_id for issue in self.artifacts.issues for topic_id in _id_list(issue.get("topic_ids"))}
         linked_issue_ids = {issue_id for finding in self.artifacts.findings for issue_id in _id_list(finding.get("issue_ids"))}
         linked_finding_ids = {finding_id for req in self.artifacts.requirements for finding_id in _id_list(req.get("finding_ids"))}
-        linked_requirement_ids = {item.get("requirement_id") for item in _list(self.artifacts.roadmap.get("roadmap_items"))}
+        deferred_requirement_ids = self._deferred_requirement_ids()
+        for requirement_id in sorted(deferred_requirement_ids):
+            expected_exclusions.append(f"{requirement_id}: deferred from Roadmap with rationale")
+        linked_requirement_ids = {
+            item.get("requirement_id") for item in _list(self.artifacts.roadmap.get("roadmap_items"))
+        }.union(deferred_requirement_ids)
         linked_prd_version_ids = {_text(prd.get("version_id")) for prd in self.artifacts.prds}
         linked_ac_ids = {ac_id for tc in self.artifacts.test_cases for ac_id in _id_list(tc.get("acceptance_criteria_ids"))}
         linked_test_case_ids = {_text(tc.get("test_case_id")) for tc in self.artifacts.test_cases if _text(tc.get("requirement_id"))}
@@ -296,7 +301,12 @@ class TraceabilityGraph:
                 for prd_id, prd in sorted(self.prds_by_id.items())
                 if _text(prd.get("version_id")) not in self.versions_by_id
             ],
-            "orphan_acceptance_criteria": sorted(set(self.acceptance_criteria_by_id) - linked_ac_ids),
+            "orphan_acceptance_criteria": sorted(
+                acceptance_criteria_id
+                for acceptance_criteria_id in set(self.acceptance_criteria_by_id) - linked_ac_ids
+                if _text(self.acceptance_criteria_by_id[acceptance_criteria_id].get("requirement_id"))
+                not in deferred_requirement_ids
+            ),
             "orphan_test_cases": sorted(set(self.test_cases_by_id) - linked_test_case_ids),
             "version_without_prd": sorted(set(self.versions_by_id) - linked_prd_version_ids),
         }
@@ -321,14 +331,19 @@ class TraceabilityGraph:
                     errors.append(f"{finding_id}: unknown issue_id {issue_id}")
             if not self.requirements_for_finding(finding_id):
                 errors.append(f"{finding_id}: no downstream requirement")
+        deferred_requirement_ids = self._deferred_requirement_ids()
         for requirement_id in self.requirements_by_id:
+            is_deferred = requirement_id in deferred_requirement_ids
             if not self.versions_for_requirement(requirement_id):
-                errors.append(f"{requirement_id}: no downstream version")
+                if not is_deferred:
+                    errors.append(f"{requirement_id}: no downstream version")
             if not self.prds_for_requirement(requirement_id):
-                errors.append(f"{requirement_id}: no downstream PRD")
+                if not is_deferred:
+                    errors.append(f"{requirement_id}: no downstream PRD")
             for criterion in self.acceptance_criteria_for_requirement(requirement_id):
                 if not self.test_cases_for_acceptance_criteria(criterion["acceptance_criteria_id"]):
-                    errors.append(f"{criterion['acceptance_criteria_id']}: no downstream test case")
+                    if not is_deferred:
+                        errors.append(f"{criterion['acceptance_criteria_id']}: no downstream test case")
         return errors
 
     def _backward_errors(self) -> tuple[list[str], list[TracePath]]:
@@ -474,10 +489,14 @@ class TraceabilityGraph:
 
     def _acceptance_criteria_errors(self) -> list[str]:
         errors: list[str] = []
+        deferred_requirement_ids = self._deferred_requirement_ids()
         for acceptance_criteria_id, criterion in self.acceptance_criteria_by_id.items():
             requirement_id = _text(criterion.get("requirement_id"))
             if requirement_id not in self.requirements_by_id:
                 errors.append(f"{acceptance_criteria_id}: unknown owner requirement {requirement_id}")
+                continue
+            if requirement_id in deferred_requirement_ids:
+                continue
             if not self.test_cases_for_acceptance_criteria(acceptance_criteria_id):
                 errors.append(f"{acceptance_criteria_id}: uncovered")
         return errors
@@ -487,6 +506,9 @@ class TraceabilityGraph:
             if _text(item.get("issue_id")) == issue_id:
                 return bool(item.get("eligible_for_finding"))
         return True
+
+    def _deferred_requirement_ids(self) -> set[str]:
+        return set(_id_list(self.artifacts.roadmap.get("deferred_requirement_ids")))
 
 
 def _validation_passed(payload: dict[str, Any]) -> bool:

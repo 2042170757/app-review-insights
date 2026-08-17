@@ -58,6 +58,9 @@ Rules:
 19. Do not generate Requirements.
 20. Do not generate technical architecture.
 21. Do not generate implementation code.
+22. Test Cases must verify only the referenced Acceptance Criteria, using the Requirement text only as context.
+23. Do not test adjacent product capabilities that might be reasonable but are not defined by the referenced Acceptance Criteria.
+24. Do not introduce coupons, discounts, promotions, refunds, payment flows, loyalty programs, membership tiers, referral programs, rewards, APIs, databases, or UI framework details unless the referenced Acceptance Criteria explicitly require them.
 
 Return only JSON matching the existing Test Case schema."""
 
@@ -209,6 +212,7 @@ def build_test_case_request(
             "roadmap_versions": roadmap.get("versions", []) if isinstance(roadmap, dict) else [],
             "coverage_requirement": "Cover every input requirement_id and every input acceptance_criteria_id at least once.",
             "requirement_type_rule": "For positive_feedback Requirements, verify preservation of the valued experience. Do not write tests as if the positive feedback were a defect complaint.",
+            "product_scope_rule": "Each Test Case must be executable against only the referenced acceptance_criteria_ids. Use Requirement title/description as context, but do not add adjacent product capabilities such as coupons, discounts, promotions, refunds, payment flows, loyalty programs, membership tiers, referral programs, rewards, APIs, databases, or UI framework details unless the referenced Acceptance Criteria explicitly contain that concept.",
             "recommended_output_size": "Prefer one concise Test Case per Requirement covering all of that Requirement's Acceptance Criteria when executable.",
             "required_output_schema": {
                 "test_cases": [

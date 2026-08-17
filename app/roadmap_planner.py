@@ -60,6 +60,9 @@ Rules:
 19. Do not generate Test Cases.
 20. For positive_feedback Requirements, Version goals and rationales must use preserve, maintain, or strengthen language rather than fix, reduce, or resolve problem language.
 21. Do not copy vague Requirement success metrics such as "remains high", "remains stable", or "maintain satisfaction" into Version success_metrics. If measurable metrics are not defined, use an empty success_metrics list.
+22. Generate Roadmap content only within the scope supported by the input Requirements, Findings, and Evidence summaries.
+23. Do not introduce unsupported product directions, product capabilities, commercial mechanisms, or implementation ideas such as coupons, discounts, loyalty programs, membership tiers, payment gateways, AI chatbots, referral programs, or reward systems unless the input Requirements explicitly contain that concept.
+24. Version name, goal, rationale, risks, and success_metrics may summarize existing Requirements, but must not create new product scope.
 
 Return only JSON matching the required Roadmap schema."""
 
@@ -205,6 +208,7 @@ def build_roadmap_request(
             "valid_requirement_ids": sorted(item["requirement_id"] for item in requirement_payload),
             "existing_dependencies_by_requirement_id": existing_dependencies_by_requirement_id,
             "requirement_type_rule": "For positive_feedback Requirements, version goals and rationales must use preserve, maintain, or strengthen language rather than fix, reduce, or resolve problem language. Only include Version success_metrics that are measurable; otherwise use success_metrics: [].",
+            "product_scope_rule": "Version name, goal, rationale, risks, and success_metrics must stay within the validated Requirements and evidence_reports. Do not add coupons, discounts, loyalty programs, membership tiers, payment gateways, AI chatbots, referral programs, reward systems, or other new product directions unless those concepts are explicitly present in the input Requirements.",
             "required_output_schema": {
                 "versions": [
                     {
