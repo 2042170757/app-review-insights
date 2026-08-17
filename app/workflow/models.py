@@ -29,6 +29,12 @@ class WorkflowStageState:
     label_en: str
     order: int
     status: str = STATUS_PENDING
+    message: str | None = None
+    artifacts: list[str] = field(default_factory=list)
+    errors: list[dict[str, Any]] = field(default_factory=list)
+    warnings: list[str] = field(default_factory=list)
+    summary: dict[str, Any] = field(default_factory=dict)
+    elapsed_seconds: float | None = None
     started_at: str | None = None
     completed_at: str | None = None
 
@@ -110,6 +116,7 @@ class RunState:
     source_type: str = "app_store"
     storefront: str | None = None
     app_id: str | None = None
+    total_elapsed_seconds: float | None = None
 
     def __post_init__(self) -> None:
         if self.status not in VALID_RUN_STATUSES:

@@ -8,7 +8,12 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from app.workflow.orchestrator import WorkflowInputError, WorkflowOrchestrator, WorkflowRunNotFound
+from app.workflow.orchestrator import (
+    WorkflowActiveRunError,
+    WorkflowInputError,
+    WorkflowOrchestrator,
+    WorkflowRunNotFound,
+)
 
 
 class CreateRunRequest(BaseModel):
@@ -35,9 +40,11 @@ def create_app(orchestrator: WorkflowOrchestrator | None = None) -> FastAPI:
     @api.post("/api/runs")
     def create_run(request: CreateRunRequest) -> dict[str, str]:
         try:
-            run = workflow.create_run(app_url=request.app_url, analysis_goal=request.analysis_goal)
+            run = workflow.create_and_start_run_async(app_url=request.app_url, analysis_goal=request.analysis_goal)
         except WorkflowInputError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except WorkflowActiveRunError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"run_id": run.run_id}
 
     @api.get("/api/runs/{run_id}")

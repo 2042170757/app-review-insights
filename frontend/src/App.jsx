@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 const DEFAULT_APP_URL = 'https://apps.apple.com/us/app/workout-for-women-home-gym/id839285684'
 const DEFAULT_GOAL = '分析低评分用户对订阅和价格的主要问题'
@@ -24,6 +24,14 @@ function App() {
     if (!runState) return 0
     return Math.max(0, Math.min(100, Number(runState.progress || 0)))
   }, [runState])
+
+  useEffect(() => {
+    if (!runId || !runState || !['queued', 'running'].includes(runState.status)) return undefined
+    const timer = window.setInterval(() => {
+      refreshRun(runId)
+    }, 1500)
+    return () => window.clearInterval(timer)
+  }, [runId, runState?.status])
 
   async function startRun(event) {
     event.preventDefault()
