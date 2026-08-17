@@ -1,17 +1,26 @@
-"""Mock Requirement generation CLI for Phase 4a."""
+"""Requirement generation CLI for mock and DeepSeek providers."""
 
 from __future__ import annotations
 
 import argparse
 import json
-from dataclasses import asdict
-from datetime import UTC, datetime
+import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+
 from app.issue_consolidation import DEFAULT_ANALYSIS_DIR
-from app.llm.base import LLMRequest
+from app.llm.base import MissingAPIKeyError, ModelRequestError
+from app.llm.deepseek_provider import DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL
 from app.llm.mock_provider import MockLLMProvider
-from app.requirement_validator import RequirementValidationResult, validate_requirement_output
+from app.llm.provider import build_production_provider
+from app.requirement_generation import (
+    DEFAULT_REQUIREMENT_GOAL,
+    RequirementGenerationResult,
+    create_failure_result,
+    generate_requirements,
+    save_requirement_outputs,
+)
 
 
 DEFAULT_FINDINGS_PATH = Path("artifacts/analysis/findings.json")
@@ -20,61 +29,89 @@ DEFAULT_EVIDENCE_REPORT_PATH = Path("artifacts/analysis/evidence_report.json")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Mock Requirement schema and validation.")
+    parser = argparse.ArgumentParser(description="Requirement generation from validated Findings.")
     parser.add_argument("--findings", type=Path, default=DEFAULT_FINDINGS_PATH)
     parser.add_argument("--finding-validation", type=Path, default=DEFAULT_FINDING_VALIDATION_PATH)
     parser.add_argument("--evidence-report", type=Path, default=DEFAULT_EVIDENCE_REPORT_PATH)
+    parser.add_argument("--provider", choices=["mock", "deepseek"], default="mock")
+    parser.add_argument("--goal", default=DEFAULT_REQUIREMENT_GOAL)
     parser.add_argument("--mock-output", type=Path)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_ANALYSIS_DIR)
     args = parser.parse_args()
 
+    load_dotenv(override=False)
     findings = load_findings(args.findings)
     finding_validation = load_finding_validation(args.finding_validation)
-    load_evidence_report(args.evidence_report)
-    raw_output = (
-        args.mock_output.read_text(encoding="utf-8")
-        if args.mock_output
-        else build_default_mock_output(findings)
-    )
-    provider = MockLLMProvider(raw_output, model="mock-requirement-model")
-    response = provider.generate(
-        LLMRequest(
-            system_prompt="Phase 4a mock Requirement validation. Do not call a production model.",
-            user_prompt="Validate mock Requirements from validated Findings.",
-            analysis_goal="mock_requirement_generation",
-        )
-    )
-    findings_by_id = {finding["finding_id"]: finding for finding in findings}
-    finding_validation_passed = finding_validation.get("status") == "Success" and finding_validation.get("passed") is True
-    eligible_finding_ids = set(findings_by_id)
-    validation = validate_requirement_output(
-        response.raw_text,
-        findings_by_id=findings_by_id,
-        finding_validation_passed=finding_validation_passed,
-        eligible_finding_ids=eligible_finding_ids,
-    )
-    requirements = [asdict(requirement) for requirement in validation.requirements] if validation.passed else []
-    paths = save_outputs(
-        raw_output=response.raw_text,
-        validation=validation,
-        requirements=requirements,
-        output_dir=args.output_dir,
-    )
+    evidence_report = load_evidence_report(args.evidence_report)
 
-    if validation.passed:
+    if args.provider == "mock":
+        raw_output = (
+            args.mock_output.read_text(encoding="utf-8")
+            if args.mock_output
+            else build_default_mock_output(findings)
+        )
+        provider = MockLLMProvider(raw_output, model="mock-requirement-model")
+        result = generate_requirements(
+            findings=findings,
+            finding_validation=finding_validation,
+            evidence_report=evidence_report,
+            provider=provider,
+            analysis_goal=args.goal,
+            output_dir=args.output_dir,
+            is_mock=True,
+        )
+    else:
+        try:
+            provider = build_production_provider()
+        except (MissingAPIKeyError, ModelRequestError) as exc:
+            provider_info = _ProviderInfo(
+                provider_name="deepseek",
+                model=os.environ.get(DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL),
+            )
+            result = create_failure_result(
+                "Missing API Key" if isinstance(exc, MissingAPIKeyError) else "Model Request Error",
+                args.goal,
+                str(exc),
+                args.output_dir,
+                provider_info,
+                False,
+                len(findings),
+            )
+        else:
+            result = generate_requirements(
+                findings=findings,
+                finding_validation=finding_validation,
+                evidence_report=evidence_report,
+                provider=provider,
+                analysis_goal=args.goal,
+                output_dir=args.output_dir,
+                is_mock=False,
+            )
+
+    if result.generation_passed:
         print("Requirement Generation: PASS")
     else:
         print("Requirement Generation: FAIL")
-        print(f"Failure Type: {validation.status}")
-    print("Provider: mock")
-    print(f"Requirement Count: {len(requirements)}")
-    print(f"Validation: {'PASS' if validation.passed else 'FAIL'}")
-    for error in validation.errors:
+        print(f"Failure Type: {result.generation_status}")
+    print(f"Provider: {result.provider}")
+    print(f"Model: {result.model}")
+    print(f"Requirement Count: {len(result.requirements)}")
+    print(f"Input Findings: {result.input_finding_count}")
+    print(f"Validation: {'PASS' if result.validation.passed else result.validation.status}")
+    for requirement in result.requirements:
+        print(f"requirement_id: {requirement['requirement_id']}")
+        print(f"title: {requirement['title']}")
+        print(f"finding_count: {len(requirement['finding_ids'])}")
+        print(f"priority: {requirement['priority']}")
+        print(f"priority_rationale: {requirement['priority_rationale']}")
+        print(f"acceptance_criteria_count: {len(requirement['acceptance_criteria'])}")
+        print(f"uncertainty: {requirement['uncertainty']}")
+    for error in result.validation.errors:
         print(f"- {error}")
     print("Output files:")
-    for label, path in paths.items():
+    for label, path in result.saved_paths.items():
         print(f"{label}: {path}")
-    return 0 if validation.passed else 1
+    return 0 if result.generation_passed and result.validation.passed else 1
 
 
 def load_findings(path: Path = DEFAULT_FINDINGS_PATH) -> list[dict]:
@@ -125,34 +162,34 @@ def build_default_mock_output(findings: list[dict]) -> str:
 def save_outputs(
     *,
     raw_output: str,
-    validation: RequirementValidationResult,
+    validation,
     requirements: list[dict],
     output_dir: Path = DEFAULT_ANALYSIS_DIR,
 ) -> dict[str, Path]:
-    output_dir.mkdir(parents=True, exist_ok=True)
-    raw_path = output_dir / "requirement_generation_raw.json"
-    requirements_path = output_dir / "requirements.json"
-    validation_path = output_dir / "requirement_validation.json"
+    result = RequirementGenerationResult(
+        generation_status="Success" if validation.passed else validation.status,
+        generation_passed=validation.passed,
+        raw_output=raw_output,
+        validation=validation,
+        requirements=requirements,
+        priority_report=[],
+        provider="mock",
+        model="mock-requirement-model",
+        analysis_goal="mock_requirement_generation",
+        input_finding_count=0,
+        saved_paths={},
+        is_mock=True,
+    )
+    return save_requirement_outputs(result, output_dir=output_dir)
 
-    raw_path.write_text(
-        json.dumps(
-            {
-                "generated_at": datetime.now(UTC).isoformat(),
-                "provider": "mock",
-                "is_mock": True,
-                "raw_output": raw_output,
-            },
-            ensure_ascii=False,
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-    requirements_path.write_text(
-        json.dumps({"requirements": requirements}, ensure_ascii=False, indent=2),
-        encoding="utf-8",
-    )
-    validation_path.write_text(json.dumps(validation.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-    return {"raw": raw_path, "requirements": requirements_path, "validation": validation_path}
+
+class _ProviderInfo:
+    def __init__(self, *, provider_name: str, model: str) -> None:
+        self.provider_name = provider_name
+        self.model = model
+
+    def generate(self, request):
+        raise NotImplementedError
 
 
 if __name__ == "__main__":

@@ -154,6 +154,12 @@ class RequirementValidatorTests(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertEqual(result.status, STATUS_PROHIBITED_IMPLEMENTATION_DETAIL)
 
+    def test_prohibited_implementation_detail_in_risk(self) -> None:
+        result = _validate(_payload(risks=["Requires PostgreSQL database schema changes."]))
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_PROHIBITED_IMPLEMENTATION_DETAIL)
+
 
 def _validate(payload: dict, *, finding_validation_passed: bool = True):
     return _validate_raw(json.dumps(payload), finding_validation_passed=finding_validation_passed)
