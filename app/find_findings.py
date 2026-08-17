@@ -1,4 +1,4 @@
-"""Mock Finding generation CLI for Phase 3a."""
+"""Finding generation CLI for mock and DeepSeek providers."""
 
 from __future__ import annotations
 
@@ -6,13 +6,23 @@ import argparse
 import json
 from dataclasses import asdict
 from datetime import UTC, datetime
+import os
 from pathlib import Path
 
-from app.evidence_engine import calculate_evidence_reports
+from dotenv import load_dotenv
+
+from app.finding_generation import (
+    DEFAULT_FINDING_GOAL,
+    build_finding_request,
+    create_failure_result,
+    generate_findings,
+)
 from app.finding_validator import FindingValidationResult, validate_finding_output
 from app.issue_consolidation import DEFAULT_ANALYSIS_DIR
-from app.llm.base import LLMRequest
+from app.llm.base import MissingAPIKeyError, ModelRequestError
+from app.llm.deepseek_provider import DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL
 from app.llm.mock_provider import MockLLMProvider
+from app.llm.provider import build_production_provider
 
 
 DEFAULT_REVIEWS_PATH = Path("artifacts/processed/reviews.json")
@@ -22,73 +32,99 @@ DEFAULT_ELIGIBILITY_PATH = Path("artifacts/analysis/finding_eligibility.json")
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Mock evidence-grounded Finding validation.")
+    parser = argparse.ArgumentParser(description="Evidence-grounded Finding generation.")
     parser.add_argument("--reviews", type=Path, default=DEFAULT_REVIEWS_PATH)
     parser.add_argument("--issues", type=Path, default=DEFAULT_ISSUES_PATH)
     parser.add_argument("--classification", type=Path, default=DEFAULT_CLASSIFICATION_PATH)
     parser.add_argument("--eligibility", type=Path, default=DEFAULT_ELIGIBILITY_PATH)
+    parser.add_argument("--provider", choices=["mock", "deepseek"], default="mock")
+    parser.add_argument("--goal", default=DEFAULT_FINDING_GOAL)
     parser.add_argument("--mock-output", type=Path)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_ANALYSIS_DIR)
     args = parser.parse_args()
 
+    load_dotenv(override=False)
     reviews = load_reviews(args.reviews)
     issues = load_issues(args.issues)
     classifications = load_classifications(args.classification)
     eligibility = load_eligibility(args.eligibility)
-    raw_output = (
-        args.mock_output.read_text(encoding="utf-8")
-        if args.mock_output
-        else build_default_mock_output(issues, eligibility)
-    )
-
-    provider = MockLLMProvider(raw_output, model="mock-finding-model")
-    response = provider.generate(
-        LLMRequest(
-            system_prompt="Phase 3a mock Finding generation. Do not call a production model.",
-            user_prompt="Validate mock evidence-grounded findings.",
-            analysis_goal="mock_finding_generation",
+    if args.provider == "mock":
+        raw_output = (
+            args.mock_output.read_text(encoding="utf-8")
+            if args.mock_output
+            else build_default_mock_output(issues, eligibility)
         )
-    )
-    issues_by_id = {issue["issue_id"]: issue for issue in issues}
-    valid_review_ids = {review["id"] for review in reviews if isinstance(review.get("id"), str)}
-    eligible_issue_ids = {
-        item["issue_id"] for item in eligibility if item.get("eligible_for_finding") is True
-    }
-    validation = validate_finding_output(
-        response.raw_text,
-        issues_by_id=issues_by_id,
-        valid_review_ids=valid_review_ids,
-        eligible_issue_ids=eligible_issue_ids,
-    )
-    findings = [asdict(finding) for finding in validation.findings] if validation.passed else []
-    evidence_reports = [report.to_dict() for report in validation.evidence_reports] if validation.passed else []
-    paths = save_outputs(
-        raw_output=response.raw_text,
-        validation=validation,
-        findings=findings,
-        evidence_reports=evidence_reports,
-        output_dir=args.output_dir,
-    )
+        provider = MockLLMProvider(raw_output, model="mock-finding-model")
+        result = generate_findings(
+            reviews=reviews,
+            issues=issues,
+            classifications=classifications,
+            eligibility=eligibility,
+            provider=provider,
+            analysis_goal=args.goal,
+            output_dir=args.output_dir,
+            is_mock=True,
+        )
+    else:
+        try:
+            provider = build_production_provider()
+        except (MissingAPIKeyError, ModelRequestError) as exc:
+            provider_info = _ProviderInfo(
+                provider_name="deepseek",
+                model=os.environ.get(DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL),
+            )
+            eligible_issue_count = len(
+                {item["issue_id"] for item in eligibility if item.get("eligible_for_finding") is True}
+            )
+            result = create_failure_result(
+                "Missing API Key" if isinstance(exc, MissingAPIKeyError) else "Model Request Error",
+                args.goal,
+                str(exc),
+                args.output_dir,
+                provider_info,
+                False,
+                eligible_issue_count,
+            )
+        else:
+            result = generate_findings(
+                reviews=reviews,
+                issues=issues,
+                classifications=classifications,
+                eligibility=eligibility,
+                provider=provider,
+                analysis_goal=args.goal,
+                output_dir=args.output_dir,
+                is_mock=False,
+            )
 
-    if validation.passed:
+    if result.generation_passed:
         print("Finding Generation: PASS")
     else:
         print("Finding Generation: FAIL")
-        print(f"Failure Type: {validation.status}")
-    print("Provider: mock")
-    print(f"Finding Count: {len(findings)}")
-    print(f"Eligibility Checked: {len(eligible_issue_ids)}")
-    print(f"Validation: {'PASS' if validation.passed else 'FAIL'}")
-    if evidence_reports:
-        print("Evidence Strength:")
-        for report in evidence_reports:
-            print(f"{report['finding_id']}: {report['evidence_strength']}")
-    for error in validation.errors:
+        print(f"Failure Type: {result.generation_status}")
+    print(f"Provider: {result.provider}")
+    print(f"Model: {result.model}")
+    print(f"Finding Count: {len(result.findings)}")
+    print(f"Eligibility Checked: {result.eligible_issue_count}")
+    print(f"Validation: {'PASS' if result.validation.passed else result.validation.status}")
+    evidence_by_id = {report["finding_id"]: report for report in result.evidence_reports}
+    for finding in result.findings:
+        report = evidence_by_id.get(finding["finding_id"], {})
+        print(f"finding_id: {finding['finding_id']}")
+        print(f"title: {finding['title']}")
+        print(f"issue_count: {len(finding['issue_ids'])}")
+        print(f"review_count: {len(finding['review_ids'])}")
+        print(f"support_count: {finding['support_count']}")
+        print(f"conflicting_count: {report.get('conflicting_count', 0)}")
+        print(f"confidence: {finding['confidence']}")
+        print(f"evidence_strength: {report.get('evidence_strength')}")
+        print(f"uncertainty: {finding['uncertainty']}")
+    for error in result.validation.errors:
         print(f"- {error}")
     print("Output files:")
-    for label, path in paths.items():
+    for label, path in result.saved_paths.items():
         print(f"{label}: {path}")
-    return 0 if validation.passed else 1
+    return 0 if result.generation_passed and result.validation.passed else 1
 
 
 def load_reviews(path: Path = DEFAULT_REVIEWS_PATH) -> list[dict]:
@@ -186,6 +222,15 @@ def save_outputs(
         "validation": validation_path,
         "evidence": evidence_path,
     }
+
+
+class _ProviderInfo:
+    def __init__(self, *, provider_name: str, model: str) -> None:
+        self.provider_name = provider_name
+        self.model = model
+
+    def generate(self, request):
+        raise NotImplementedError
 
 
 if __name__ == "__main__":

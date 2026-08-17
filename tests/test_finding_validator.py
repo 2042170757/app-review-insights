@@ -8,6 +8,7 @@ from app.finding_validator import (
     STATUS_INELIGIBLE_ISSUE,
     STATUS_INVALID_JSON,
     STATUS_SCHEMA_VALIDATION_FAILED,
+    STATUS_SCOPE_OVERCLAIM,
     STATUS_SUCCESS,
     STATUS_SUPPORT_COUNT_MISMATCH,
     STATUS_UNKNOWN_ISSUE_ID,
@@ -102,6 +103,12 @@ class FindingValidatorTests(unittest.TestCase):
 
         self.assertTrue(result.passed)
         self.assertEqual(result.status, STATUS_EMPTY_FINDINGS)
+
+    def test_scope_overclaim(self) -> None:
+        result = _validate(_payload(statement="Most users report paywall friction."))
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_SCOPE_OVERCLAIM)
 
 
 def _validate(payload: dict):

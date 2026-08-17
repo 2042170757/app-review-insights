@@ -20,6 +20,14 @@ STATUS_INELIGIBLE_ISSUE = "Ineligible Issue"
 STATUS_EVIDENCE_MISMATCH = "Evidence Mismatch"
 STATUS_SUPPORT_COUNT_MISMATCH = "Support Count Mismatch"
 STATUS_CONFLICTING_EVIDENCE_INVALID = "Conflicting Evidence Invalid"
+STATUS_SCOPE_OVERCLAIM = "Scope Overclaim"
+FORBIDDEN_SCOPE_PHRASES = {
+    "all users",
+    "most users",
+    "the majority of users",
+    "majority of users",
+    "users generally",
+}
 
 
 @dataclass
@@ -94,6 +102,7 @@ def validate_finding_payload(
     evidence_mismatch_errors: list[str] = []
     support_count_errors: list[str] = []
     conflicting_errors: list[str] = []
+    scope_errors: list[str] = []
 
     for index, raw_finding in enumerate(raw_findings):
         prefix = f"findings[{index}]"
@@ -139,6 +148,11 @@ def validate_finding_payload(
             normalized_confidence = float(confidence)
             if normalized_confidence < 0 or normalized_confidence > 1:
                 errors.append(f"{prefix}.confidence: out of range {normalized_confidence}")
+
+        scope_text = " ".join([title, statement, evidence_summary]).lower()
+        for phrase in FORBIDDEN_SCOPE_PHRASES:
+            if phrase in scope_text:
+                scope_errors.append(f"{prefix}: scope overclaim uses forbidden phrase {phrase!r}")
 
         issue_evidence_review_ids: set[str] = set()
         for issue_id in issue_ids:
@@ -220,6 +234,8 @@ def validate_finding_payload(
         return _fail(STATUS_SUPPORT_COUNT_MISMATCH, errors + support_count_errors)
     if conflicting_errors:
         return _fail(STATUS_CONFLICTING_EVIDENCE_INVALID, errors + conflicting_errors)
+    if scope_errors:
+        return _fail(STATUS_SCOPE_OVERCLAIM, errors + scope_errors)
     if errors:
         return _fail(STATUS_SCHEMA_VALIDATION_FAILED, errors)
     return FindingValidationResult(
