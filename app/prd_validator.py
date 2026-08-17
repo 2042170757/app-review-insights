@@ -589,7 +589,7 @@ def _is_measurable_metric(value: str) -> bool:
         return False
     return bool(
         re.search(
-            r"\d|%|percentage|ratio|rate|count|time|duration|average|median|completion|retention|conversion|reduction|complaints|reviews",
+            r"\d|%|percentage|ratio|rate|count|number|score|rating|survey|user-reported|time|duration|average|median|completion|retention|conversion|reduction|complaints|reviews",
             normalized,
         )
     )
