@@ -140,3 +140,49 @@ For the Phase 0 smoke test, the storefront is explicitly resolved from the App S
 - Pagination is limited by Apple's RSS behavior and by this smoke test's configured `max_pages` and `max_reviews`.
 - Phase 0 does not claim complete historical coverage.
 - If Apple RSS fails or returns an empty feed, the smoke test reports structured errors and does not fabricate review data.
+
+## Phase 0.5 App Store Connect API Capability Probe
+
+Phase 0.5 adds a diagnostic command only. It does not add a full App Store Connect review provider, frontend, AI pipeline, or database integration.
+
+### Required Environment Variables
+
+Install the Phase 0.5 JWT dependency first:
+
+```bash
+pip install -r requirements.txt
+```
+
+```bash
+APPSTORE_ISSUER_ID=...
+APPSTORE_KEY_ID=...
+APPSTORE_PRIVATE_KEY_PATH=/path/to/AuthKey_XXXXXXXXXX.p8
+```
+
+Do not commit Apple private keys or API secrets to this repository.
+
+### Run The Probe
+
+```bash
+python -m app.appstore_connect_probe
+```
+
+The probe:
+
+1. Checks that all required environment variables are present.
+2. Checks that the private key file exists.
+3. Generates a local ES256 JWT for App Store Connect API authentication.
+4. Calls App Store Connect `GET /v1/apps` to list apps visible to the current API key.
+5. Looks for the target App Store ID `839285684`.
+6. If the target app is visible, calls `GET /v1/apps/{app_resource_id}/customerReviews`.
+7. Saves a sanitized diagnostic report to `artifacts/probes/appstore_connect_probe.json`.
+
+The output distinguishes local JWT/configuration failures, HTTP 401, HTTP 403, API access not enabled, target app not visible in the current account, insufficient app permissions, and other HTTP or network errors.
+
+### App Store Connect API Limits
+
+- App Store Connect API requires an Apple Developer/App Store Connect account with API key access.
+- The current account and API key must be allowed to see the target app.
+- This API is not a public arbitrary App Store review API.
+- Do not confuse App Store URL accessibility with App Store Connect API access. A public app page can be reachable while the API key has no access to that app's private App Store Connect resources.
+- This probe never prints or stores the JWT, private key contents, or other secrets.
