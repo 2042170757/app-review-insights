@@ -4,6 +4,12 @@ const DEFAULT_APP_URL = 'https://apps.apple.com/us/app/workout-for-women-home-gy
 const DEFAULT_GOAL = '分析低评分用户对订阅和价格的主要问题'
 const DEMO_APP_URL = DEFAULT_APP_URL
 const DEMO_GOAL = DEFAULT_GOAL
+const ratingConstraintOptions = [
+  { value: 'all', label: 'All Ratings', constraints: {} },
+  { value: '1-2', label: '1-2 Stars', constraints: { rating: { min: 1, max: 2 } } },
+  { value: '1-3', label: '1-3 Stars', constraints: { rating: { min: 1, max: 3 } } },
+  { value: '4-5', label: '4-5 Stars', constraints: { rating: { min: 4, max: 5 } } },
+]
 
 const statusMeta = {
   pending: { symbol: '○', label: 'Pending' },
@@ -49,6 +55,7 @@ const tabs = [
 function App() {
   const [appUrl, setAppUrl] = useState(DEFAULT_APP_URL)
   const [analysisGoal, setAnalysisGoal] = useState(DEFAULT_GOAL)
+  const [ratingConstraint, setRatingConstraint] = useState('all')
   const [runMode, setRunMode] = useState('live')
   const [sourceType, setSourceType] = useState('app_store')
   const [importFile, setImportFile] = useState(null)
@@ -131,12 +138,14 @@ function App() {
   }
 
   async function createAppStoreRun() {
+    const constraints = constraintsForRating(ratingConstraint)
     return fetch('/api/runs', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         app_url: appUrl,
         analysis_goal: analysisGoal,
+        ...(Object.keys(constraints).length ? { constraints } : {}),
       }),
     })
   }
@@ -145,6 +154,7 @@ function App() {
     if (!importPreview?.import_id) {
       throw new Error('Import preview is required before starting analysis.')
     }
+    const constraints = constraintsForRating(ratingConstraint)
     return fetch('/api/runs/import', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -152,6 +162,7 @@ function App() {
         import_id: importPreview.import_id,
         app_url: appUrl,
         analysis_goal: analysisGoal,
+        ...(Object.keys(constraints).length ? { constraints } : {}),
       }),
     })
   }
@@ -172,6 +183,7 @@ function App() {
       setSourceType('app_store')
       setAppUrl(DEMO_APP_URL)
       setAnalysisGoal(DEMO_GOAL)
+      setRatingConstraint('all')
     }
   }
 
@@ -282,6 +294,20 @@ function App() {
               placeholder="分析用户评论中的主要产品问题、用户体验问题和改进机会。"
               disabled={runMode === 'demo'}
             />
+          </label>
+          <label className="field constraint-field">
+            <span>Analysis Constraints</span>
+            <select
+              value={ratingConstraint}
+              onChange={(event) => setRatingConstraint(event.target.value)}
+              disabled={runMode === 'demo'}
+            >
+              {ratingConstraintOptions.map((option) => (
+                <option value={option.value} key={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
           <fieldset className="source-group">
             <legend>Mode</legend>
@@ -536,6 +562,8 @@ function DashboardTab({ tab, runState, results, lookup, filters, setFilters, set
 
 function Overview({ results, runState }) {
   const stats = results.reviews?.statistics || {}
+  const scope = results.reviews?.scope_report || {}
+  const metadata = results.metadata?.data || {}
   const counts = results.traceability?.validation?.counts || {}
   const reviews = results.reviews?.reviews || []
   const requirements = results.requirements?.requirements || []
@@ -544,7 +572,9 @@ function Overview({ results, runState }) {
     return total + listOf(requirement.acceptance_criteria).length
   }, 0)
   const cards = [
-    ['Reviews', counts.reviews ?? reviews.length],
+    ['Reviews In Scope', scope.selected_count ?? metadata.reviews_in_scope ?? counts.reviews ?? reviews.length],
+    ['Reviews Collected', metadata.reviews_collected ?? scope.input_count ?? results.reviews?.raw_reviews?.length ?? reviews.length],
+    ['Excluded by Constraint', metadata.reviews_excluded_by_constraint ?? scope.excluded_count ?? 0],
     ['Processed Reviews', stats.retained ?? results.reviews?.processing_report?.retained_count ?? reviews.length],
     ['Topics', counts.topics ?? listOf(results.topics?.topics).length],
     ['Issues', counts.issues ?? listOf(results.issues?.issues).length],
@@ -571,6 +601,7 @@ function Overview({ results, runState }) {
         <TagRow labels={['Evidence', 'Deterministic', 'Model + Evidence', 'Uncertainty', 'Conflict']} />
         <dl className="definition-grid">
           <FragmentPair term="Analysis Goal" description={runState.analysis_goal} />
+          <FragmentPair term="Analysis Constraint" description={constraintLabel(scope.constraint || metadata.analysis_constraints || runState.constraints)} />
           <FragmentPair term="Average Rating" description={formatValue(stats.average_rating)} />
           <FragmentPair
             term="Data Source"
@@ -578,6 +609,10 @@ function Overview({ results, runState }) {
           />
           <FragmentPair term="App Context" description={results.metadata?.data?.app_context || runState.app_url} />
           <FragmentPair term="Review Territory" description={results.metadata?.data?.territory || results.reviews?.dataset_metadata?.territory || runState.storefront || 'US'} />
+          <FragmentPair
+            term="Scope Summary"
+            description={`${formatValue(scope.selected_count ?? metadata.reviews_in_scope)} in scope; ${formatValue(scope.excluded_count ?? metadata.reviews_excluded_by_constraint)} excluded by analysis constraint`}
+          />
         </dl>
       </section>
     </div>
@@ -682,10 +717,14 @@ function Reviews({ results, filters, setFilters, setSelectedEntity }) {
 function Processing({ results }) {
   const report = results.reviews?.processing_report || {}
   const stats = results.reviews?.statistics || {}
+  const scope = results.reviews?.scope_report || {}
+  const scopeValidation = results.reviews?.scope_validation || {}
   return (
     <div className="tab-content">
       <section className="metric-grid">
-        <Metric label="Input Count" value={report.input_count ?? stats.total ?? 0} />
+        <Metric label="Full Input Count" value={scope.input_count ?? results.reviews?.processing_report_all?.input_count ?? report.input_count ?? stats.total ?? 0} />
+        <Metric label="Selected Count" value={scope.selected_count ?? report.input_count ?? stats.total ?? 0} />
+        <Metric label="Excluded Count" value={scope.excluded_count ?? 0} />
         <Metric label="Valid Count" value={report.valid_count ?? stats.valid ?? 0} />
         <Metric label="Retained Count" value={report.retained_count ?? stats.retained ?? 0} />
         <Metric label="Duplicates" value={report.exact_duplicate_count ?? stats.exact_duplicates ?? 0} />
@@ -695,6 +734,7 @@ function Processing({ results }) {
         <Distribution title="Rating Distribution" data={stats.rating_distribution} sourceLabel="Deterministic Statistics" />
         <Distribution title="Language Distribution" data={stats.language_distribution} sourceLabel="Deterministic Statistics" />
       </section>
+      <KeyValuePanel title="Analysis Scope" data={{ constraint: constraintLabel(scope.constraint), validation: scopeValidation.status, selected_count: scope.selected_count, excluded_count: scope.excluded_count }} />
       <KeyValuePanel title="Processing Report" data={report} />
     </div>
   )
@@ -1596,6 +1636,20 @@ function listOf(value) {
   if (Array.isArray(value)) return value
   if (value === undefined || value === null || value === '') return []
   return [value]
+}
+
+function constraintsForRating(value) {
+  const option = ratingConstraintOptions.find((item) => item.value === value)
+  return option?.constraints || {}
+}
+
+function constraintLabel(value) {
+  const rating = value?.rating
+  if (!rating) return 'All Ratings'
+  const min = rating.min
+  const max = rating.max
+  if (min === undefined || max === undefined) return formatValue(value)
+  return `${min}-${max} Stars`
 }
 
 function formatAcceptanceCriteria(items) {

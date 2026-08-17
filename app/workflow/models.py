@@ -116,6 +116,7 @@ class RunState:
     source_type: str = "app_store"
     data_source: str = "app_store"
     import_metadata: dict[str, Any] = field(default_factory=dict)
+    constraints: dict[str, Any] = field(default_factory=dict)
     is_demo: bool = False
     demo_metadata: dict[str, Any] = field(default_factory=dict)
     storefront: str | None = None
@@ -182,6 +183,7 @@ def new_run_state(
     source_type: str = "app_store",
     data_source: str | None = None,
     import_metadata: dict[str, Any] | None = None,
+    constraints: dict[str, Any] | None = None,
     is_demo: bool = False,
     demo_metadata: dict[str, Any] | None = None,
 ) -> RunState:
@@ -200,6 +202,7 @@ def new_run_state(
         source_type=source_type,
         data_source=data_source or source_type,
         import_metadata=dict(import_metadata or {}),
+        constraints=dict(constraints or {}),
         is_demo=is_demo,
         demo_metadata=dict(demo_metadata or {}),
         storefront=storefront,

@@ -13,13 +13,20 @@ from app.workflow.models import RunState
 
 def reviews_payload(run: RunState) -> dict[str, Any]:
     reviews = _load_json(run, "reviews.json").get("reviews", [])
+    all_reviews = _load_json(run, "reviews_all.json").get("reviews", [])
     normalized = _load_json(run, "normalized_reviews.json").get("reviews", [])
     return {
         **_base(run, bool(reviews)),
         "reviews": reviews,
+        "all_reviews": all_reviews,
         "raw_reviews": normalized,
         "statistics": _load_json(run, "statistics.json"),
+        "statistics_all": _load_json(run, "statistics_all.json"),
         "processing_report": _load_json(run, "processing_report.json"),
+        "processing_report_all": _load_json(run, "processing_report_all.json"),
+        "scope_report": _load_json(run, "scope_report.json"),
+        "scope_validation": _load_json(run, "scope_validation.json"),
+        "selected_reviews": _load_json(run, "selected_reviews.json").get("reviews", []),
         "dataset_metadata": _load_json(run, "dataset_metadata.json"),
     }
 
@@ -174,7 +181,10 @@ def revisions_payload(run: RunState) -> dict[str, Any]:
 
 
 def metadata_payload(run: RunState) -> dict[str, Any]:
-    dataset = reviews_payload(run).get("dataset_metadata", {})
+    review_payload = reviews_payload(run)
+    dataset = review_payload.get("dataset_metadata", {})
+    scope_report = review_payload.get("scope_report", {})
+    scope_constraint = scope_report.get("constraint") if isinstance(scope_report, dict) else {}
     validation = validation_payload(run)
     collection = _stage_by_id(run, "collection")
     import_metadata = run.import_metadata or {}
@@ -208,6 +218,11 @@ def metadata_payload(run: RunState) -> dict[str, Any]:
             "valid_count": dataset.get("valid_count") or import_metadata.get("valid_count"),
             "invalid_count": dataset.get("invalid_count") or import_metadata.get("invalid_count"),
             "actual_count": dataset.get("actual_count") or demo_metadata.get("review_count") or _summary_value(collection, "actual_count"),
+            "analysis_constraints": run.constraints or scope_constraint or {},
+            "reviews_collected": dataset.get("actual_count") or demo_metadata.get("review_count") or _summary_value(collection, "actual_count") or scope_report.get("input_count"),
+            "reviews_in_scope": scope_report.get("selected_count"),
+            "reviews_excluded_by_constraint": scope_report.get("excluded_count"),
+            "scope_validation": review_payload.get("scope_validation", {}),
             "limitations": _demo_limitations(demo_metadata) if is_demo else dataset.get("limitations") or import_metadata.get("limitations") or _summary_value(collection, "limitations") or [],
             "is_demo": is_demo,
             "mode": demo_metadata.get("mode") if is_demo else None,

@@ -40,19 +40,37 @@ class WorkflowIntegrationTests(unittest.TestCase):
         self.assertEqual(result.stages[0].summary["review_territory"], "US")
         self.assertTrue(result.stages[0].warnings)
 
+    def test_constraints_are_stored_and_passed_to_workflow_context(self) -> None:
+        runner = RecordingRunner()
+        orchestrator = WorkflowOrchestrator(pipeline_runner=runner)
+        run = orchestrator.create_run(
+            app_url=VALID_URL,
+            analysis_goal="Goal",
+            constraints={"rating": {"min": 1, "max": 2}},
+        )
+
+        result = orchestrator.run_pipeline_sync(run.run_id)
+
+        self.assertEqual(result.constraints, {"rating": {"min": 1, "max": 2}})
+        self.assertEqual(result.stages[0].summary["constraints"], {"rating": {"min": 1, "max": 2}})
+        self.assertTrue(all(context["constraints"] == {"rating": {"min": 1, "max": 2}} for context in runner.contexts))
+
 
 class RecordingRunner:
     def __init__(self) -> None:
         self.stages: list[str] = []
+        self.contexts: list[dict] = []
 
     def run_stage(self, *, stage: str, context: dict):
         self.stages.append(stage)
+        self.contexts.append(dict(context))
         summary = {"stage": stage}
         if stage == "scope":
             summary = {
                 "storefront": context["storefront"],
                 "app_id": context["app_id"],
                 "analysis_goal": context["analysis_goal"],
+                "constraints": context.get("constraints", {}),
                 "review_source": "apify",
                 "review_territory": "US",
             }

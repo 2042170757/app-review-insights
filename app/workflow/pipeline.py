@@ -4,19 +4,34 @@ from __future__ import annotations
 
 import json
 import os
+import shutil
 import subprocess
 import sys
 import time
-from dataclasses import dataclass, field
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
 
+from app.analysis_scope import (
+    ScopeFilterResult,
+    apply_analysis_scope,
+    normalize_constraints,
+    validate_constraints,
+    write_scope_outputs,
+)
 from app.apify_provider import ApifyReviewProvider, save_apify_artifacts
 from app.final_validation import run_final_validation
 from app.imports import fetch_imported_reviews, save_import_artifacts
-from app.review_processing import load_reviews, process_reviews, write_processing_outputs
+from app.review_processing import (
+    ProcessingResult,
+    build_processing_report,
+    build_statistics,
+    load_reviews,
+    process_reviews,
+    write_processing_outputs,
+)
 from app.workflow.stages import (
     ERROR_AUTH,
     ERROR_DATA,
@@ -40,6 +55,7 @@ from app.workflow.validation import VALIDATION_PASS, split_final_validation_repo
 
 
 ANALYSIS_DIR = Path("artifacts/analysis")
+ANALYSIS_SCOPE_DIR = Path("artifacts/analysis_scope")
 NORMALIZED_REVIEWS = Path("artifacts/normalized/apify/normalized_reviews.json")
 IMPORTED_NORMALIZED_REVIEWS = Path("artifacts/normalized/import/normalized_reviews.json")
 PROCESSED_REVIEWS = Path("artifacts/processed/reviews.json")
@@ -264,13 +280,34 @@ class BackendPipelineRunner:
         )
 
     def _scope(self, context: dict[str, Any]) -> WorkflowStageExecutionResult:
+        scope_validation = validate_constraints(context.get("constraints"))
         summary = {
             "storefront": context["storefront"],
             "app_id": context["app_id"],
             "analysis_goal": context["analysis_goal"],
+            "constraints": scope_validation.constraints if scope_validation.passed else normalize_constraints(context.get("constraints")),
+            "scope_validation": scope_validation.to_dict(),
             "review_source": _review_source_label(context),
             "review_territory": _review_territory_label(context),
         }
+        if not scope_validation.passed:
+            empty_scope_result = ScopeFilterResult(
+                input_count=0,
+                selected_count=0,
+                excluded_count=0,
+                constraints=normalize_constraints(context.get("constraints")),
+                selected_reviews=[],
+                excluded_review_ids=[],
+                validation=scope_validation,
+            )
+            paths = write_scope_outputs(empty_scope_result, output_dir=ANALYSIS_SCOPE_DIR)
+            raise WorkflowStageExecutionError(
+                stage=STAGE_SCOPE,
+                error_type=ERROR_VALIDATION,
+                message="Scope Validation failed: " + "; ".join(scope_validation.errors),
+                artifacts=[str(path) for path in paths.values()],
+                summary=summary,
+            )
         if context.get("source_type") in {"json", "csv"}:
             summary["app_context"] = context["app_url"]
             summary["import_metadata"] = context.get("import_metadata", {})
@@ -395,29 +432,37 @@ class BackendPipelineRunner:
         try:
             reviews = load_reviews(input_path)
             result = process_reviews(reviews)
-            paths = write_processing_outputs(result)
+            full_paths = write_processing_outputs(result)
+            all_paths = _copy_full_processing_outputs(full_paths)
+            scope_result = apply_analysis_scope(
+                [asdict(review) for review in result.reviews],
+                context.get("constraints"),
+            )
+            scope_paths = write_scope_outputs(scope_result, output_dir=ANALYSIS_SCOPE_DIR)
+            if not scope_result.validation.passed:
+                raise WorkflowStageExecutionError(
+                    stage=STAGE_PROCESSING,
+                    error_type=ERROR_VALIDATION,
+                    message="Scope Validation failed: " + "; ".join(scope_result.validation.errors),
+                    artifacts=[str(path) for path in {**all_paths, **scope_paths}.values()],
+                    summary=_scope_processing_summary(result, scope_result),
+                )
+            selected_result = _selected_processing_result(result, scope_result)
+            selected_paths = write_processing_outputs(selected_result)
         except Exception as exc:
+            if isinstance(exc, WorkflowStageExecutionError):
+                raise exc
             raise WorkflowStageExecutionError(
                 stage=STAGE_PROCESSING,
                 error_type=ERROR_DATA,
                 message=f"Review processing failed: {exc!r}",
             ) from exc
+        paths = {**selected_paths, **all_paths, **scope_paths}
         return WorkflowStageExecutionResult(
             stage=STAGE_PROCESSING,
             message="Reviews processed with deterministic Phase 1 pipeline.",
             artifacts=[str(path) for path in paths.values()],
-            summary={
-                "input_count": result.report.input_count,
-                "valid_count": result.report.valid_count,
-                "retained_count": result.report.retained_count,
-                "duplicate_count": result.report.exact_duplicate_count,
-                "language_distribution": result.statistics.get("language_distribution", {}),
-                "statistics": {
-                    "total": result.statistics.get("total"),
-                    "average_rating": result.statistics.get("average_rating"),
-                    "rating_distribution": result.statistics.get("rating_distribution"),
-                },
-            },
+            summary=_scope_processing_summary(result, scope_result, selected_result),
         )
 
     def _traceability(self) -> WorkflowStageExecutionResult:
@@ -628,6 +673,64 @@ def _traceability_summary(report: dict[str, Any]) -> dict[str, Any]:
         "critical_issue_count": len(report.get("critical_issues", [])),
         "missing_final_deliverable_count": len(report.get("missing_final_deliverables", [])),
         "counts": report.get("counts", {}),
+    }
+
+
+def _copy_full_processing_outputs(paths: dict[str, Path]) -> dict[str, Path]:
+    suffixes = {
+        "reviews_json": "reviews_all.json",
+        "reviews_csv": "reviews_all.csv",
+        "statistics": "statistics_all.json",
+        "processing_report": "processing_report_all.json",
+    }
+    copied: dict[str, Path] = {}
+    for key, filename in suffixes.items():
+        source = paths.get(key)
+        if not source or not source.exists():
+            continue
+        target = source.with_name(filename)
+        shutil.copy2(source, target)
+        copied[f"{key}_all"] = target
+    return copied
+
+
+def _selected_processing_result(result: ProcessingResult, scope_result: ScopeFilterResult) -> ProcessingResult:
+    selected_indexes = {
+        review.get("original_index")
+        for review in scope_result.selected_reviews
+        if isinstance(review.get("original_index"), int)
+    }
+    selected_reviews = [review for review in result.reviews if review.original_index in selected_indexes]
+    statistics = build_statistics(selected_reviews)
+    report = build_processing_report(
+        selected_reviews,
+        processing_timestamp=result.report.processing_timestamp,
+        near_duplicate_threshold=result.report.near_duplicate_threshold,
+    )
+    return ProcessingResult(reviews=selected_reviews, statistics=statistics, report=report)
+
+
+def _scope_processing_summary(
+    full_result: ProcessingResult,
+    scope_result: ScopeFilterResult,
+    selected_result: ProcessingResult | None = None,
+) -> dict[str, Any]:
+    stats_source = selected_result or full_result
+    return {
+        "input_count": full_result.report.input_count,
+        "selected_count": scope_result.selected_count,
+        "excluded_count": scope_result.excluded_count,
+        "constraints": scope_result.constraints,
+        "scope_validation": scope_result.validation.to_dict(),
+        "valid_count": stats_source.report.valid_count,
+        "retained_count": stats_source.report.retained_count,
+        "duplicate_count": stats_source.report.exact_duplicate_count,
+        "language_distribution": stats_source.statistics.get("language_distribution", {}),
+        "statistics": {
+            "total": stats_source.statistics.get("total"),
+            "average_rating": stats_source.statistics.get("average_rating"),
+            "rating_distribution": stats_source.statistics.get("rating_distribution"),
+        },
     }
 
 

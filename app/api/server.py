@@ -23,12 +23,14 @@ from app.workflow.orchestrator import (
 class CreateRunRequest(BaseModel):
     app_url: str
     analysis_goal: str | None = None
+    constraints: dict[str, Any] | None = None
 
 
 class CreateImportRunRequest(BaseModel):
     import_id: str
     app_url: str
     analysis_goal: str | None = None
+    constraints: dict[str, Any] | None = None
 
 
 def create_app(orchestrator: WorkflowOrchestrator | None = None) -> FastAPI:
@@ -50,7 +52,11 @@ def create_app(orchestrator: WorkflowOrchestrator | None = None) -> FastAPI:
     @api.post("/api/runs")
     def create_run(request: CreateRunRequest) -> dict[str, str]:
         try:
-            run = workflow.create_and_start_run_async(app_url=request.app_url, analysis_goal=request.analysis_goal)
+            run = workflow.create_and_start_run_async(
+                app_url=request.app_url,
+                analysis_goal=request.analysis_goal,
+                constraints=request.constraints,
+            )
         except WorkflowInputError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc
         except WorkflowActiveRunError as exc:
@@ -64,6 +70,7 @@ def create_app(orchestrator: WorkflowOrchestrator | None = None) -> FastAPI:
                 app_url=request.app_url,
                 analysis_goal=request.analysis_goal,
                 import_id=request.import_id,
+                constraints=request.constraints,
             )
         except WorkflowInputError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from exc

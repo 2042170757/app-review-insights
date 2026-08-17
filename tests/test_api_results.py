@@ -48,6 +48,9 @@ class APIResultsTests(unittest.TestCase):
 
         self.assertTrue(reviews["available"])
         self.assertEqual(reviews["reviews"][0]["id"], f"{run.run_id}-review")
+        self.assertEqual(reviews["scope_report"]["selected_count"], 1)
+        self.assertEqual(reviews["scope_validation"]["status"], "PASS")
+        self.assertEqual(reviews["all_reviews"][0]["id"], f"{run.run_id}-review")
         self.assertEqual(topics["topics"][0]["review_ids"], [f"{run.run_id}-review"])
         self.assertEqual(issues["issues"][0]["issue_type"], "problem")
         self.assertTrue(issues["issues"][0]["eligible_for_finding"])
@@ -162,7 +165,42 @@ def _write_stage_artifacts(source_dir: Path, stage: str, run_id: str) -> list[Pa
                 ]
             },
             "statistics.json": {"total": 1, "average_rating": 1.0},
+            "statistics_all.json": {"total": 1, "average_rating": 1.0},
             "processing_report.json": {"input_count": 1, "valid_count": 1, "retained_count": 1},
+            "processing_report_all.json": {"input_count": 1, "valid_count": 1, "retained_count": 1},
+            "reviews_all.json": {
+                "reviews": [
+                    {
+                        "id": f"{run_id}-review",
+                        "source": "apify",
+                        "app_id": "839285684",
+                        "territory": "US",
+                        "rating": 1,
+                        "raw_title": "Raw title",
+                        "raw_body": "Raw body",
+                        "clean_title": "Clean title",
+                        "clean_body": "Clean body",
+                        "language": "en",
+                        "created_at": "2026-01-01T00:00:00Z",
+                    }
+                ]
+            },
+            "scope_report.json": {
+                "input_count": 1,
+                "selected_count": 1,
+                "excluded_count": 0,
+                "constraint": {"rating": {"min": 1, "max": 2}},
+                "excluded_review_ids": [],
+            },
+            "scope_validation.json": {"status": "PASS", "passed": True, "errors": [], "constraints": {"rating": {"min": 1, "max": 2}}},
+            "selected_reviews.json": {
+                "reviews": [
+                    {
+                        "id": f"{run_id}-review",
+                        "rating": 1,
+                    }
+                ]
+            },
         },
         "topic_discovery": {
             "topics.json": {

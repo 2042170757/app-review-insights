@@ -155,6 +155,30 @@ class ImportAPITests(unittest.TestCase):
         self.assertEqual(self.runner.contexts[0]["source_type"], "json")
         self.assertTrue(self.runner.contexts[0]["import_path"])
 
+    def test_import_run_accepts_rating_constraints(self) -> None:
+        imported = self.client.post(
+            "/api/import/json",
+            data={"app_url": VALID_URL},
+            files={"file": ("reviews.json", json.dumps({"reviews": [_review("json-run")]}), "application/json")},
+        ).json()
+
+        created = self.client.post(
+            "/api/runs/import",
+            json={
+                "import_id": imported["import_id"],
+                "app_url": VALID_URL,
+                "analysis_goal": "Goal",
+                "constraints": {"rating": {"min": 1, "max": 3}},
+            },
+        )
+
+        self.assertEqual(created.status_code, 200)
+        run_id = created.json()["run_id"]
+        self._wait_for_terminal_run(run_id)
+        run_payload = self.client.get(f"/api/runs/{run_id}").json()
+        self.assertEqual(run_payload["constraints"], {"rating": {"min": 1, "max": 3}})
+        self.assertEqual(self.runner.contexts[0]["constraints"], {"rating": {"min": 1, "max": 3}})
+
     def test_run_isolation_between_imports(self) -> None:
         first = self.client.post(
             "/api/import/json",

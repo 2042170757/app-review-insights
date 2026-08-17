@@ -32,6 +32,22 @@ class APIServerTests(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertIn("run_id", response.json())
 
+    def test_post_runs_accepts_rating_constraints(self) -> None:
+        response = self.client.post(
+            "/api/runs",
+            json={
+                "app_url": VALID_URL,
+                "analysis_goal": "Goal",
+                "constraints": {"rating": {"min": 1, "max": 2}},
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        run_id = response.json()["run_id"]
+        self._wait_for_terminal_run(run_id)
+        payload = self.client.get(f"/api/runs/{run_id}").json()
+        self.assertEqual(payload["constraints"], {"rating": {"min": 1, "max": 2}})
+
     def test_post_runs_rejects_invalid_url(self) -> None:
         response = self.client.post(
             "/api/runs",

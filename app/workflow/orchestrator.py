@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import threading
 import time
+from typing import Any
 from urllib.parse import urlparse
 from uuid import uuid4
 
 from app.demo import DEMO_RUN_ID_PREFIX, create_demo_run_state, load_demo_cache
+from app.analysis_scope import normalize_constraints
 from app.url_resolver import AppStoreUrlError, parse_app_store_url
 from app.imports import ImportedDataset
 from app.workflow.models import (
@@ -71,7 +73,13 @@ class WorkflowOrchestrator:
         self._active_run_id: str | None = None
         self._lock = threading.RLock()
 
-    def create_run(self, *, app_url: str, analysis_goal: str | None = None) -> RunState:
+    def create_run(
+        self,
+        *,
+        app_url: str,
+        analysis_goal: str | None = None,
+        constraints: dict[str, Any] | None = None,
+    ) -> RunState:
         validation = validate_app_store_url(app_url)
         if not validation.valid:
             raise WorkflowInputError(validation.error or "Invalid App Store URL")
@@ -82,6 +90,7 @@ class WorkflowOrchestrator:
             storefront=validation.storefront or "",
             app_id=validation.app_id or "",
             is_mock=False,
+            constraints=normalize_constraints(constraints),
         )
         with self._lock:
             self._runs[run.run_id] = run
@@ -105,6 +114,7 @@ class WorkflowOrchestrator:
         app_url: str,
         analysis_goal: str | None,
         import_id: str,
+        constraints: dict[str, Any] | None = None,
     ) -> RunState:
         dataset = self.get_import(import_id)
         validation = validate_app_store_url(app_url)
@@ -120,6 +130,7 @@ class WorkflowOrchestrator:
             source_type=dataset.source_type,
             data_source=dataset.source_type,
             import_metadata={**dataset.metadata, "import_id": dataset.import_id},
+            constraints=normalize_constraints(constraints),
         )
         with self._lock:
             self._runs[run.run_id] = run
@@ -167,11 +178,17 @@ class WorkflowOrchestrator:
         thread.start()
         return run
 
-    def create_and_start_run_async(self, *, app_url: str, analysis_goal: str | None = None) -> RunState:
+    def create_and_start_run_async(
+        self,
+        *,
+        app_url: str,
+        analysis_goal: str | None = None,
+        constraints: dict[str, Any] | None = None,
+    ) -> RunState:
         with self._lock:
             if self._active_run_id:
                 raise WorkflowActiveRunError("已有分析任务正在运行")
-            run = self.create_run(app_url=app_url, analysis_goal=analysis_goal)
+            run = self.create_run(app_url=app_url, analysis_goal=analysis_goal, constraints=constraints)
             self._active_run_id = run.run_id
             run.status = RUN_RUNNING
             run.current_stage = _next_pending_stage(run)
@@ -186,11 +203,17 @@ class WorkflowOrchestrator:
         app_url: str,
         analysis_goal: str | None,
         import_id: str,
+        constraints: dict[str, Any] | None = None,
     ) -> RunState:
         with self._lock:
             if self._active_run_id:
                 raise WorkflowActiveRunError("已有分析任务正在运行")
-            run = self.create_import_run(app_url=app_url, analysis_goal=analysis_goal, import_id=import_id)
+            run = self.create_import_run(
+                app_url=app_url,
+                analysis_goal=analysis_goal,
+                import_id=import_id,
+                constraints=constraints,
+            )
             self._active_run_id = run.run_id
             run.status = RUN_RUNNING
             run.current_stage = _next_pending_stage(run)
@@ -404,7 +427,7 @@ class WorkflowOrchestrator:
                 if self._active_run_id == run_id:
                     self._active_run_id = None
 
-    def _context_for_run(self, run_id: str) -> dict[str, str]:
+    def _context_for_run(self, run_id: str) -> dict[str, Any]:
         run = self.get_run(run_id)
         return {
             "run_id": run.run_id,
@@ -417,6 +440,7 @@ class WorkflowOrchestrator:
             "data_source": run.data_source,
             "import_metadata": run.import_metadata,
             "import_path": self._run_import_paths.get(run.run_id, ""),
+            "constraints": run.constraints,
         }
 
 
