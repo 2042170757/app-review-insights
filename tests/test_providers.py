@@ -78,7 +78,28 @@ class ProviderNormalizationTests(unittest.TestCase):
         self.assertEqual(len(result.reviews), 1)
         self.assertEqual(result.reviews[0]["source"], "csv_import")
 
+    def test_import_provider_generates_stable_id_when_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            path = Path(temp_dir) / "reviews.json"
+            payload = {
+                "reviews": [
+                    {
+                        "rating": 4,
+                        "title": "Title",
+                        "body": "",
+                        "created_at": "2026-08-17T00:00:00+00:00",
+                    }
+                ]
+            }
+            path.write_text(json.dumps(payload), encoding="utf-8")
+
+            first = JsonImportProvider(path).fetch_reviews("app-1", max_reviews=10)
+            second = JsonImportProvider(path).fetch_reviews("app-1", max_reviews=10)
+
+        self.assertFalse(first.errors)
+        self.assertEqual(first.reviews[0]["id"], second.reviews[0]["id"])
+        self.assertTrue(first.reviews[0]["id"].startswith("json_import-"))
+
 
 if __name__ == "__main__":
     unittest.main()
-

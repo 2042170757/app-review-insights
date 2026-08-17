@@ -48,6 +48,10 @@ function App() {
   const [appUrl, setAppUrl] = useState(DEFAULT_APP_URL)
   const [analysisGoal, setAnalysisGoal] = useState(DEFAULT_GOAL)
   const [sourceType, setSourceType] = useState('app_store')
+  const [importFile, setImportFile] = useState(null)
+  const [importPreview, setImportPreview] = useState(null)
+  const [importError, setImportError] = useState(null)
+  const [isImporting, setIsImporting] = useState(false)
   const [runId, setRunId] = useState(null)
   const [runState, setRunState] = useState(null)
   const [results, setResults] = useState({})
@@ -90,17 +94,10 @@ function App() {
     setResults({})
     setSelectedEntity(null)
     try {
-      const response = await fetch('/api/runs', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          app_url: appUrl,
-          analysis_goal: analysisGoal,
-        }),
-      })
+      const response = sourceType === 'app_store' ? await createAppStoreRun() : await createImportRun()
       const payload = await response.json()
       if (!response.ok) {
-        throw new Error(payload.detail || 'Unable to create run')
+        throw new Error(formatApiError(payload.detail || 'Unable to create run'))
       }
       setRunId(payload.run_id)
       await refreshRun(payload.run_id)
@@ -108,6 +105,79 @@ function App() {
       setRequestError(error.message)
     } finally {
       setIsSubmitting(false)
+    }
+  }
+
+  async function createAppStoreRun() {
+    return fetch('/api/runs', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        app_url: appUrl,
+        analysis_goal: analysisGoal,
+      }),
+    })
+  }
+
+  async function createImportRun() {
+    if (!importPreview?.import_id) {
+      throw new Error('Import preview is required before starting analysis.')
+    }
+    return fetch('/api/runs/import', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        import_id: importPreview.import_id,
+        app_url: appUrl,
+        analysis_goal: analysisGoal,
+      }),
+    })
+  }
+
+  async function handleSourceChange(nextSource) {
+    setSourceType(nextSource)
+    setImportFile(null)
+    setImportPreview(null)
+    setImportError(null)
+  }
+
+  function handleAppUrlChange(value) {
+    setAppUrl(value)
+    if (sourceType !== 'app_store') {
+      setImportPreview(null)
+      setImportError(null)
+    }
+  }
+
+  async function handleImportFileChange(event) {
+    const file = event.target.files?.[0] || null
+    setImportFile(file)
+    setImportPreview(null)
+    setImportError(null)
+    if (!file) return
+    const expectedExtension = sourceType === 'json' ? '.json' : '.csv'
+    if (!file.name.toLowerCase().endsWith(expectedExtension)) {
+      setImportError({ type: 'Invalid Extension', message: `Expected a ${expectedExtension} file.` })
+      return
+    }
+    setIsImporting(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      formData.append('app_url', appUrl)
+      const response = await fetch(`/api/import/${sourceType}`, {
+        method: 'POST',
+        body: formData,
+      })
+      const payload = await response.json()
+      if (!response.ok) {
+        throw new Error(formatApiError(payload.detail || 'Import failed'))
+      }
+      setImportPreview(payload)
+    } catch (error) {
+      setImportError({ type: 'Import Error', message: error.message })
+    } finally {
+      setIsImporting(false)
     }
   }
 
@@ -161,10 +231,10 @@ function App() {
       <section className="control-strip">
         <form onSubmit={startRun} className="run-form">
           <label className="field app-url">
-            <span>App Store URL</span>
+            <span>{sourceType === 'app_store' ? 'App Store URL' : 'App Context URL'}</span>
             <input
               value={appUrl}
-              onChange={(event) => setAppUrl(event.target.value)}
+              onChange={(event) => handleAppUrlChange(event.target.value)}
               placeholder="https://apps.apple.com/us/app/example/id123"
             />
           </label>
@@ -185,7 +255,7 @@ function App() {
                 name="source"
                 value="app_store"
                 checked={sourceType === 'app_store'}
-                onChange={(event) => setSourceType(event.target.value)}
+                onChange={(event) => handleSourceChange(event.target.value)}
               />
               <span>App Store</span>
             </label>
@@ -195,8 +265,7 @@ function App() {
                 name="source"
                 value="json"
                 checked={sourceType === 'json'}
-                onChange={(event) => setSourceType(event.target.value)}
-                disabled
+                onChange={(event) => handleSourceChange(event.target.value)}
               />
               <span>JSON</span>
             </label>
@@ -206,20 +275,29 @@ function App() {
                 name="source"
                 value="csv"
                 checked={sourceType === 'csv'}
-                onChange={(event) => setSourceType(event.target.value)}
-                disabled
+                onChange={(event) => handleSourceChange(event.target.value)}
               />
               <span>CSV</span>
             </label>
           </fieldset>
           <div className="actions">
-            <button type="submit" disabled={isSubmitting || sourceType !== 'app_store'}>
+            <button type="submit" disabled={isSubmitting || isImporting || (sourceType !== 'app_store' && !importPreview?.import_id)}>
               {isSubmitting ? 'Creating Run...' : '开始分析'}
             </button>
             <button type="button" className="secondary" onClick={() => refreshRun()} disabled={!runId}>
               Refresh
             </button>
           </div>
+          {sourceType !== 'app_store' ? (
+            <ImportPanel
+              sourceType={sourceType}
+              importFile={importFile}
+              importPreview={importPreview}
+              importError={importError}
+              isImporting={isImporting}
+              onFileChange={handleImportFileChange}
+            />
+          ) : null}
         </form>
         {requestError ? <div className="message error-message">{requestError}</div> : null}
       </section>
@@ -229,7 +307,7 @@ function App() {
         <Metric label="Current Stage" value={runState?.current_stage || 'none'} />
         <Metric label="Run ID" value={runState?.run_id || 'none'} mono />
         <Metric label="App ID" value={runState?.app_id || 'unknown'} />
-        <Metric label="Territory" value={runState?.storefront || results.reviews?.dataset_metadata?.territory || 'US'} />
+        <Metric label="Review Territory" value={results.metadata?.data?.territory || results.reviews?.dataset_metadata?.territory || runState?.storefront || 'US'} />
         <div className="progress-block">
           <div className="progress-label">
             <span>Overall Progress</span>
@@ -299,6 +377,39 @@ function App() {
   )
 }
 
+function ImportPanel({ sourceType, importFile, importPreview, importError, isImporting, onFileChange }) {
+  const metadata = importPreview?.metadata || {}
+  const sourceLabel = sourceType === 'json' ? 'Imported JSON' : 'Imported CSV'
+  return (
+    <section className="import-panel">
+      <label className="field">
+        <span>{sourceType === 'json' ? 'JSON File' : 'CSV File'}</span>
+        <input type="file" accept={sourceType === 'json' ? '.json,application/json' : '.csv,text/csv'} onChange={onFileChange} />
+      </label>
+      <div className="import-preview">
+        <strong>{sourceLabel}</strong>
+        <dl className="definition-grid compact-grid">
+          <FragmentPair term="Filename" description={importFile?.name || metadata.filename || 'none'} />
+          <FragmentPair term="Size" description={importFile ? formatBytes(importFile.size) : 'none'} />
+          <FragmentPair term="Record Count" description={formatValue(metadata.record_count)} />
+          <FragmentPair term="Valid Count" description={formatValue(metadata.valid_count)} />
+          <FragmentPair term="Invalid Count" description={formatValue(metadata.invalid_count)} />
+          <FragmentPair term="Territory" description={metadata.territory || 'Unknown / Not provided'} />
+          <FragmentPair term="App ID" description={metadata.app_id || 'none'} />
+        </dl>
+        {isImporting ? <div className="message">Import validation running...</div> : null}
+        {importError ? (
+          <div className="message error-message">
+            <strong>Import Error</strong>
+            <span>{importError.type}: {importError.message}</span>
+          </div>
+        ) : null}
+        {importPreview ? <ListBlock title="Warnings" items={importPreview.warnings} emphasized /> : null}
+      </div>
+    </section>
+  )
+}
+
 function DashboardTab({ tab, runState, results, lookup, filters, setFilters, setSelectedEntity, setSelectedTab }) {
   if (!runState) {
     return <EmptyState text="Start an analysis run to load dashboard results." />
@@ -361,9 +472,10 @@ function Overview({ results, runState }) {
           <FragmentPair term="Average Rating" description={formatValue(stats.average_rating)} />
           <FragmentPair
             term="Data Source"
-            description={results.reviews?.dataset_metadata?.provider || runState.source_type || 'artifact snapshot'}
+            description={results.metadata?.data?.display_source || results.reviews?.dataset_metadata?.display_source || results.reviews?.dataset_metadata?.provider || runState.source_type || 'artifact snapshot'}
           />
-          <FragmentPair term="Territory" description={results.reviews?.dataset_metadata?.territory || runState.storefront || 'US'} />
+          <FragmentPair term="App Context" description={results.metadata?.data?.app_context || runState.app_url} />
+          <FragmentPair term="Review Territory" description={results.metadata?.data?.territory || results.reviews?.dataset_metadata?.territory || runState.storefront || 'US'} />
         </dl>
       </section>
     </div>
@@ -425,7 +537,10 @@ function Reviews({ results, filters, setFilters, setSelectedEntity }) {
           />
         </label>
       </div>
-      <div className="data-note">Territory = US · Source = {results.reviews?.source || 'artifact API'}</div>
+      <div className="data-note">
+        Review Territory = {results.metadata?.data?.territory || results.reviews?.dataset_metadata?.territory || 'Unknown / Not provided'} ·
+        Source = {results.metadata?.data?.display_source || results.reviews?.dataset_metadata?.display_source || results.reviews?.source || 'artifact API'}
+      </div>
       <div className="table-wrap">
         <table>
           <thead>
@@ -826,13 +941,19 @@ function DiagnosticsTab({ results, runState }) {
       </section>
       <section className="section-block">
         <h3>Data Metadata</h3>
-        <TagRow labels={['Evidence', 'Run Artifact Snapshot', metadata.data?.cached_label || 'Cached for this Run']} />
+        <TagRow labels={['Evidence', metadata.data?.artifact_source || 'Run Artifact Snapshot', metadata.data?.cached_label || metadata.data?.display_source || 'Run Data']} />
         <dl className="definition-grid">
-          <FragmentPair term="Data Source" description={metadata.data?.provider || 'unknown'} />
-          <FragmentPair term="Territory" description={metadata.data?.territory || 'US'} />
+          <FragmentPair term="Data Source" description={metadata.data?.display_source || metadata.data?.provider || 'unknown'} />
+          <FragmentPair term="Review Source" description={metadata.data?.review_source || metadata.data?.display_source || 'unknown'} />
+          <FragmentPair term="App Context" description={metadata.data?.app_context || runState.app_url || 'unknown'} />
+          <FragmentPair term="Filename" description={metadata.data?.filename || 'none'} />
+          <FragmentPair term="Territory" description={metadata.data?.territory || 'Unknown / Not provided'} />
           <FragmentPair term="App ID" description={metadata.data?.app_id || runState.app_id || 'unknown'} />
           <FragmentPair term="Collection Time" description={metadata.data?.collection_time || 'unknown'} />
           <FragmentPair term="Requested Limit" description={formatValue(metadata.data?.requested_limit)} />
+          <FragmentPair term="Record Count" description={formatValue(metadata.data?.record_count)} />
+          <FragmentPair term="Valid Count" description={formatValue(metadata.data?.valid_count)} />
+          <FragmentPair term="Invalid Count" description={formatValue(metadata.data?.invalid_count)} />
           <FragmentPair term="Actual Count" description={formatValue(metadata.data?.actual_count)} />
         </dl>
         <ListBlock title="Limitations [Uncertainty]" items={metadata.data?.limitations} emphasized />
@@ -1365,6 +1486,24 @@ function runtimePipelineMessage(status) {
   if (status === 'fail' || status === 'failed') return 'Runtime Pipeline Failed'
   if (status === 'pending') return 'Runtime Pipeline Pending'
   return `Runtime Pipeline ${formatValue(status)}`
+}
+
+function formatApiError(detail) {
+  if (!detail) return 'Request failed'
+  if (typeof detail === 'string') return detail
+  if (typeof detail === 'object') {
+    const type = detail.type || detail.error || 'Error'
+    const message = detail.message || detail.detail || JSON.stringify(detail)
+    return `${type}: ${message}`
+  }
+  return String(detail)
+}
+
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes)) return 'none'
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
 function formatValue(value) {

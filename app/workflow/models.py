@@ -114,6 +114,8 @@ class RunState:
     updated_at: str = field(default_factory=lambda: now_utc())
     is_mock: bool = True
     source_type: str = "app_store"
+    data_source: str = "app_store"
+    import_metadata: dict[str, Any] = field(default_factory=dict)
     storefront: str | None = None
     app_id: str | None = None
     total_elapsed_seconds: float | None = None
@@ -175,6 +177,9 @@ def new_run_state(
     storefront: str,
     app_id: str,
     is_mock: bool = True,
+    source_type: str = "app_store",
+    data_source: str | None = None,
+    import_metadata: dict[str, Any] | None = None,
 ) -> RunState:
     timestamp = now_utc()
     return RunState(
@@ -188,6 +193,9 @@ def new_run_state(
         created_at=timestamp,
         updated_at=timestamp,
         is_mock=is_mock,
+        source_type=source_type,
+        data_source=data_source or source_type,
+        import_metadata=dict(import_metadata or {}),
         storefront=storefront,
         app_id=app_id,
     )

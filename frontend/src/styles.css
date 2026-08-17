@@ -177,6 +177,28 @@ button.compact {
   font-size: 13px;
 }
 
+.import-panel {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: minmax(260px, 0.8fr) minmax(320px, 1.6fr);
+  gap: 12px;
+  align-items: start;
+  border: 1px solid #d4dde1;
+  border-radius: 7px;
+  background: #f8fafb;
+  padding: 12px;
+}
+
+.import-preview {
+  display: grid;
+  gap: 8px;
+}
+
+.import-preview > strong {
+  color: #25343b;
+  font-size: 13px;
+}
+
 .run-header {
   display: grid;
   grid-template-columns: repeat(5, minmax(130px, 1fr)) minmax(240px, 1.4fr);
@@ -876,6 +898,10 @@ tbody tr:hover {
   .trace-grid,
   .trace-map-list,
   .three-column {
+    grid-template-columns: 1fr;
+  }
+
+  .import-panel {
     grid-template-columns: 1fr;
   }
 }

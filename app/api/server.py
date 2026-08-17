@@ -4,20 +4,28 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from app.api import results
+from app.imports import ImportValidationError, create_import_dataset, max_import_bytes
 from app.workflow.orchestrator import (
     WorkflowActiveRunError,
     WorkflowInputError,
     WorkflowOrchestrator,
     WorkflowRunNotFound,
+    validate_app_store_url,
 )
 
 
 class CreateRunRequest(BaseModel):
+    app_url: str
+    analysis_goal: str | None = None
+
+
+class CreateImportRunRequest(BaseModel):
+    import_id: str
     app_url: str
     analysis_goal: str | None = None
 
@@ -47,6 +55,28 @@ def create_app(orchestrator: WorkflowOrchestrator | None = None) -> FastAPI:
         except WorkflowActiveRunError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
         return {"run_id": run.run_id}
+
+    @api.post("/api/runs/import")
+    def create_import_run(request: CreateImportRunRequest) -> dict[str, str]:
+        try:
+            run = workflow.create_and_start_import_run_async(
+                app_url=request.app_url,
+                analysis_goal=request.analysis_goal,
+                import_id=request.import_id,
+            )
+        except WorkflowInputError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        except WorkflowActiveRunError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        return {"run_id": run.run_id}
+
+    @api.post("/api/import/json")
+    async def import_json(file: UploadFile = File(...), app_url: str = Form("")) -> dict[str, Any]:
+        return await _import_preview(workflow, source_type="json", file=file, app_url=app_url)
+
+    @api.post("/api/import/csv")
+    async def import_csv(file: UploadFile = File(...), app_url: str = Form("")) -> dict[str, Any]:
+        return await _import_preview(workflow, source_type="csv", file=file, app_url=app_url)
 
     @api.get("/api/runs/{run_id}")
     def get_run(run_id: str) -> dict[str, Any]:
@@ -126,6 +156,39 @@ def _result_payload(workflow: WorkflowOrchestrator, run_id: str, adapter) -> dic
         return adapter(workflow.get_run(run_id))
     except WorkflowRunNotFound as exc:
         raise HTTPException(status_code=404, detail="Run not found") from exc
+
+
+async def _import_preview(
+    workflow: WorkflowOrchestrator,
+    *,
+    source_type: str,
+    file: UploadFile,
+    app_url: str,
+) -> dict[str, Any]:
+    app_id = ""
+    if app_url:
+        validation = validate_app_store_url(app_url)
+        if not validation.valid:
+            raise HTTPException(status_code=400, detail={"type": "Invalid App Context", "message": validation.error})
+        app_id = validation.app_id or ""
+    try:
+        content = await file.read(max_import_bytes() + 1)
+        dataset = create_import_dataset(
+            source_type=source_type,
+            filename=file.filename or "",
+            content=content,
+            app_id=app_id,
+        )
+    except ImportValidationError as exc:
+        raise HTTPException(status_code=400, detail={"type": exc.error_type, "message": exc.message}) from exc
+    workflow.register_import(dataset)
+    return {
+        "import_id": dataset.import_id,
+        "source_type": dataset.source_type,
+        "filename": dataset.filename,
+        "metadata": dataset.metadata,
+        "warnings": dataset.metadata.get("limitations", []),
+    }
 
 
 app = create_app()

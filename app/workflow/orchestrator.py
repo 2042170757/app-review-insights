@@ -8,6 +8,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 from app.url_resolver import AppStoreUrlError, parse_app_store_url
+from app.imports import ImportedDataset
 from app.workflow.models import (
     AppStoreUrlValidation,
     RunState,
@@ -63,6 +64,8 @@ class WorkflowOrchestrator:
 
     def __init__(self, *, pipeline_runner: BackendPipelineRunner | None = None) -> None:
         self._runs: dict[str, RunState] = {}
+        self._imports: dict[str, ImportedDataset] = {}
+        self._run_import_paths: dict[str, str] = {}
         self._runner = pipeline_runner or BackendPipelineRunner()
         self._active_run_id: str | None = None
         self._lock = threading.RLock()
@@ -81,6 +84,45 @@ class WorkflowOrchestrator:
         )
         with self._lock:
             self._runs[run.run_id] = run
+        return run
+
+    def register_import(self, dataset: ImportedDataset) -> ImportedDataset:
+        with self._lock:
+            self._imports[dataset.import_id] = dataset
+        return dataset
+
+    def get_import(self, import_id: str) -> ImportedDataset:
+        with self._lock:
+            try:
+                return self._imports[import_id]
+            except KeyError as exc:
+                raise WorkflowInputError("Import dataset not found") from exc
+
+    def create_import_run(
+        self,
+        *,
+        app_url: str,
+        analysis_goal: str | None,
+        import_id: str,
+    ) -> RunState:
+        dataset = self.get_import(import_id)
+        validation = validate_app_store_url(app_url)
+        if not validation.valid:
+            raise WorkflowInputError(validation.error or "Invalid App Store URL")
+        run = new_run_state(
+            run_id=str(uuid4()),
+            app_url=app_url.strip(),
+            analysis_goal=normalize_analysis_goal(analysis_goal),
+            storefront=validation.storefront or "",
+            app_id=validation.app_id or "",
+            is_mock=False,
+            source_type=dataset.source_type,
+            data_source=dataset.source_type,
+            import_metadata={**dataset.metadata, "import_id": dataset.import_id},
+        )
+        with self._lock:
+            self._runs[run.run_id] = run
+            self._run_import_paths[run.run_id] = str(dataset.path)
         return run
 
     def get_run(self, run_id: str) -> RunState:
@@ -122,6 +164,25 @@ class WorkflowOrchestrator:
             if self._active_run_id:
                 raise WorkflowActiveRunError("已有分析任务正在运行")
             run = self.create_run(app_url=app_url, analysis_goal=analysis_goal)
+            self._active_run_id = run.run_id
+            run.status = RUN_RUNNING
+            run.current_stage = _next_pending_stage(run)
+            run.touch()
+        thread = threading.Thread(target=self._run_pipeline, args=(run.run_id,), daemon=True)
+        thread.start()
+        return run
+
+    def create_and_start_import_run_async(
+        self,
+        *,
+        app_url: str,
+        analysis_goal: str | None,
+        import_id: str,
+    ) -> RunState:
+        with self._lock:
+            if self._active_run_id:
+                raise WorkflowActiveRunError("已有分析任务正在运行")
+            run = self.create_import_run(app_url=app_url, analysis_goal=analysis_goal, import_id=import_id)
             self._active_run_id = run.run_id
             run.status = RUN_RUNNING
             run.current_stage = _next_pending_stage(run)
@@ -344,6 +405,10 @@ class WorkflowOrchestrator:
             "storefront": run.storefront or "",
             "app_id": run.app_id or "",
             "review_territory": "US",
+            "source_type": run.source_type,
+            "data_source": run.data_source,
+            "import_metadata": run.import_metadata,
+            "import_path": self._run_import_paths.get(run.run_id, ""),
         }
 
 

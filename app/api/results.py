@@ -176,19 +176,34 @@ def metadata_payload(run: RunState) -> dict[str, Any]:
     dataset = reviews_payload(run).get("dataset_metadata", {})
     validation = validation_payload(run)
     collection = _stage_by_id(run, "collection")
+    import_metadata = run.import_metadata or {}
+    imported = run.source_type in {"json", "csv"}
+    display_source = (
+        import_metadata.get("display_source")
+        or dataset.get("display_source")
+        or ("Imported JSON" if run.source_type == "json" else "Imported CSV" if run.source_type == "csv" else None)
+    )
     return {
         **_base(run, True),
         "data": {
-            "source_type": run.source_type,
-            "artifact_source": "Run Artifact Snapshot",
-            "cached_label": "Cached for this Run",
+            "source_type": run.data_source or run.source_type,
+            "display_source": display_source or dataset.get("provider") or _summary_value(collection, "provider"),
+            "review_source": display_source or dataset.get("provider") or _summary_value(collection, "provider"),
+            "app_context": run.app_url,
+            "artifact_source": dataset.get("artifact_source") or ("Uploaded File" if imported else "Run Artifact Snapshot"),
+            "cached_label": dataset.get("cached_label") or (None if imported else "Cached for this Run"),
             "provider": dataset.get("provider") or _summary_value(collection, "provider"),
-            "territory": dataset.get("territory") or _summary_value(collection, "territory") or run.storefront,
+            "filename": dataset.get("filename") or import_metadata.get("filename"),
+            "territory": dataset.get("territory") or import_metadata.get("territory") or _summary_value(collection, "territory") or (run.storefront if not imported else None),
             "app_id": dataset.get("app_id") or _summary_value(collection, "app_id") or run.app_id,
-            "collection_time": dataset.get("retrieved_at") or (collection.completed_at if collection else None),
+            "collection_time": dataset.get("retrieved_at") or dataset.get("imported_at") or (collection.completed_at if collection else None),
+            "imported_at": dataset.get("imported_at") or import_metadata.get("imported_at"),
             "requested_limit": dataset.get("requested_limit") or _summary_value(collection, "requested_limit"),
+            "record_count": dataset.get("record_count") or import_metadata.get("record_count"),
+            "valid_count": dataset.get("valid_count") or import_metadata.get("valid_count"),
+            "invalid_count": dataset.get("invalid_count") or import_metadata.get("invalid_count"),
             "actual_count": dataset.get("actual_count") or _summary_value(collection, "actual_count"),
-            "limitations": dataset.get("limitations") or _summary_value(collection, "limitations") or [],
+            "limitations": dataset.get("limitations") or import_metadata.get("limitations") or _summary_value(collection, "limitations") or [],
         },
         "model": validation.get("metadata", {}),
         "validation": {

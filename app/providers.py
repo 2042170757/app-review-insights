@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -315,7 +316,7 @@ class JsonImportProvider:
                         source_url=source_url,
                     )
                 )
-        except (OSError, json.JSONDecodeError, TypeError, ValueError) as exc:
+        except (OSError, json.JSONDecodeError, KeyError, TypeError, ValueError) as exc:
             result.errors.append(
                 ReviewProviderError(
                     provider=self.provider_name,
@@ -356,7 +357,7 @@ class CsvImportProvider:
                         source_url=source_url,
                     )
                 )
-        except (OSError, csv.Error, TypeError, ValueError) as exc:
+        except (OSError, csv.Error, KeyError, TypeError, ValueError) as exc:
             result.errors.append(
                 ReviewProviderError(
                     provider=self.provider_name,
@@ -384,22 +385,31 @@ def _normalize_import_row(
     if rating < 1 or rating > 5:
         raise ValueError(f"Imported rating out of range: {rating}")
 
-    review_id = str(row.get("id") or "").strip()
-    if not review_id:
-        raise ValueError("Imported review id is empty")
-
     title = str(row.get("title") or "")
     body = str(row.get("body") or "")
     if not title and not body:
         raise ValueError("Imported review must contain title or body")
 
     created_at = _require_parseable_datetime(str(row["created_at"]))
+    app_id_value = str(row.get("app_id") or app_id)
+    territory_value = str(row.get("territory") or territory).upper()
+    review_id = str(row.get("id") or "").strip()
+    if not review_id:
+        review_id = _stable_import_review_id(
+            source=source,
+            app_id=app_id_value,
+            territory=territory_value,
+            rating=rating,
+            title=title,
+            body=body,
+            created_at=created_at,
+        )
 
     return {
         "id": review_id,
         "source": source,
-        "app_id": str(row.get("app_id") or app_id),
-        "territory": str(row.get("territory") or territory).upper(),
+        "app_id": app_id_value,
+        "territory": territory_value,
         "rating": rating,
         "title": title,
         "body": body,
@@ -408,3 +418,30 @@ def _normalize_import_row(
         "app_version": row.get("app_version") or None,
         "source_url": str(row.get("source_url") or source_url),
     }
+
+
+def _stable_import_review_id(
+    *,
+    source: str,
+    app_id: str,
+    territory: str,
+    rating: int,
+    title: str,
+    body: str,
+    created_at: str,
+) -> str:
+    payload = json.dumps(
+        {
+            "source": source,
+            "app_id": app_id,
+            "territory": territory,
+            "rating": rating,
+            "title": title,
+            "body": body,
+            "created_at": created_at,
+        },
+        ensure_ascii=False,
+        sort_keys=True,
+    )
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()[:16]
+    return f"{source}-{digest}"

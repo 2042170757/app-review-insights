@@ -15,6 +15,7 @@ from dotenv import load_dotenv
 
 from app.apify_provider import ApifyReviewProvider, save_apify_artifacts
 from app.final_validation import run_final_validation
+from app.imports import fetch_imported_reviews, save_import_artifacts
 from app.review_processing import load_reviews, process_reviews, write_processing_outputs
 from app.workflow.stages import (
     ERROR_AUTH,
@@ -40,6 +41,7 @@ from app.workflow.validation import VALIDATION_PASS, split_final_validation_repo
 
 ANALYSIS_DIR = Path("artifacts/analysis")
 NORMALIZED_REVIEWS = Path("artifacts/normalized/apify/normalized_reviews.json")
+IMPORTED_NORMALIZED_REVIEWS = Path("artifacts/normalized/import/normalized_reviews.json")
 PROCESSED_REVIEWS = Path("artifacts/processed/reviews.json")
 US_TERRITORY = "US"
 REQUESTED_REVIEW_LIMIT = 50
@@ -108,7 +110,7 @@ class BackendPipelineRunner:
         if stage == STAGE_COLLECTION:
             return self._collection(context)
         if stage == STAGE_PROCESSING:
-            return self._processing()
+            return self._processing(context)
         if stage == STAGE_TOPIC_DISCOVERY:
             return self._command_stage(
                 stage=stage,
@@ -266,9 +268,13 @@ class BackendPipelineRunner:
             "storefront": context["storefront"],
             "app_id": context["app_id"],
             "analysis_goal": context["analysis_goal"],
-            "review_source": "apify",
-            "review_territory": US_TERRITORY,
+            "review_source": _review_source_label(context),
+            "review_territory": _review_territory_label(context),
         }
+        if context.get("source_type") in {"json", "csv"}:
+            summary["app_context"] = context["app_url"]
+            summary["import_metadata"] = context.get("import_metadata", {})
+            return WorkflowStageExecutionResult(stage=STAGE_SCOPE, message="Import scope metadata created.", summary=summary)
         if context["storefront"] != US_TERRITORY:
             warning = "Input storefront differs from required review territory; collection will use US reviews."
             return WorkflowStageExecutionResult(
@@ -280,6 +286,9 @@ class BackendPipelineRunner:
         return WorkflowStageExecutionResult(stage=STAGE_SCOPE, message="Scope metadata created.", summary=summary)
 
     def _collection(self, context: dict[str, Any]) -> WorkflowStageExecutionResult:
+        if context.get("source_type") in {"json", "csv"}:
+            return self._import_collection(context)
+
         load_dotenv(override=False)
         api_token = os.environ.get("APIFY_API_TOKEN", "")
         if not api_token:
@@ -325,9 +334,66 @@ class BackendPipelineRunner:
             summary=summary,
         )
 
-    def _processing(self) -> WorkflowStageExecutionResult:
+    def _import_collection(self, context: dict[str, Any]) -> WorkflowStageExecutionResult:
+        source_type = context.get("source_type", "")
+        import_path = Path(context.get("import_path", ""))
+        import_metadata = dict(context.get("import_metadata") or {})
+        if not import_path.exists() or not import_path.is_file():
+            raise WorkflowStageExecutionError(
+                stage=STAGE_COLLECTION,
+                error_type=ERROR_DATA,
+                message="Import dataset file is unavailable.",
+            )
         try:
-            reviews = load_reviews(NORMALIZED_REVIEWS)
+            max_reviews = int(import_metadata.get("record_count") or REQUESTED_REVIEW_LIMIT)
+            result = fetch_imported_reviews(
+                source_type=source_type,
+                path=import_path,
+                app_id=context.get("app_id", ""),
+                max_reviews=max_reviews,
+            )
+            if result.errors:
+                first_error = result.errors[0]
+                raise ValueError(first_error.raw_error or first_error.message)
+            if not result.reviews:
+                raise ValueError("Import provider returned no normalized reviews.")
+            metadata = {
+                **import_metadata,
+                "provider": result.provider,
+                "coverage": result.coverage,
+                "actual_count": len(result.reviews),
+            }
+            paths = save_import_artifacts(result=result, metadata=metadata)
+        except Exception as exc:
+            raise WorkflowStageExecutionError(
+                stage=STAGE_COLLECTION,
+                error_type=ERROR_DATA,
+                message=f"Import collection failed: {exc!r}",
+            ) from exc
+        return WorkflowStageExecutionResult(
+            stage=STAGE_COLLECTION,
+            message=f"{metadata.get('display_source', 'Imported dataset')} loaded into Unified Review Schema.",
+            artifacts=[str(path) for path in paths],
+            warnings=list(metadata.get("limitations", [])),
+            summary={
+                "provider": result.provider,
+                "source_type": source_type,
+                "display_source": metadata.get("display_source"),
+                "app_id": metadata.get("app_id") or context.get("app_id"),
+                "territory": metadata.get("territory"),
+                "record_count": metadata.get("record_count"),
+                "valid_count": metadata.get("valid_count"),
+                "invalid_count": metadata.get("invalid_count"),
+                "actual_count": len(result.reviews),
+                "limitations": metadata.get("limitations", []),
+                "filename": metadata.get("filename"),
+            },
+        )
+
+    def _processing(self, context: dict[str, Any]) -> WorkflowStageExecutionResult:
+        input_path = IMPORTED_NORMALIZED_REVIEWS if context.get("source_type") in {"json", "csv"} else NORMALIZED_REVIEWS
+        try:
+            reviews = load_reviews(input_path)
             result = process_reviews(reviews)
             paths = write_processing_outputs(result)
         except Exception as exc:
@@ -566,6 +632,22 @@ def _traceability_summary(report: dict[str, Any]) -> dict[str, Any]:
 
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _review_source_label(context: dict[str, Any]) -> str:
+    source_type = context.get("source_type")
+    if source_type == "json":
+        return "imported_json"
+    if source_type == "csv":
+        return "imported_csv"
+    return "apify"
+
+
+def _review_territory_label(context: dict[str, Any]) -> str:
+    if context.get("source_type") in {"json", "csv"}:
+        metadata = context.get("import_metadata") or {}
+        return str(metadata.get("territory") or "Unknown / Not provided")
+    return US_TERRITORY
 
 
 def _stage_timeout_seconds(stage: str) -> int:
