@@ -22,6 +22,10 @@ const resultEndpoints = {
   testCases: '/test-cases',
   traceability: '/traceability',
   validation: '/validation',
+  diagnostics: '/errors',
+  warnings: '/warnings',
+  revisions: '/revisions',
+  metadata: '/metadata',
 }
 
 const tabs = [
@@ -37,6 +41,7 @@ const tabs = [
   { id: 'testCases', label: 'Test Cases' },
   { id: 'traceability', label: 'Traceability' },
   { id: 'validation', label: 'Validation' },
+  { id: 'diagnostics', label: 'Diagnostics' },
 ]
 
 function App() {
@@ -148,8 +153,8 @@ function App() {
           <p>App Store review pipeline dashboard with evidence drill-down and traceability.</p>
         </div>
         <div className="top-status">
-          <StatusPill value={runState?.runtime_validation_status || 'pending'} label="Runtime" />
-          <StatusPill value={runState?.submission_validation_status || 'pending'} label="Submission" />
+          <StatusPill value={runState?.runtime_validation_status || 'pending'} label="Backend Analysis" />
+          <StatusPill value={runState?.submission_validation_status || 'pending'} label="Final Submission" />
         </div>
       </header>
 
@@ -235,6 +240,7 @@ function App() {
           </div>
         </div>
       </section>
+      <FailurePropagationNotice diagnostics={results.diagnostics} runState={runState} />
 
       <section className="dashboard-grid">
         <aside className="workflow-pane">
@@ -244,7 +250,7 @@ function App() {
             selectedStageId={selectedStage?.stage}
             onSelect={(stageId) => setSelectedStageId(stageId)}
           />
-          <StageDetail stage={selectedStage} />
+          <StageDetail stage={selectedStage} revisions={runState?.revisions || []} />
         </aside>
 
         <section className="results-pane">
@@ -285,9 +291,9 @@ function App() {
       </section>
 
       <section className="diagnostics-panel">
-        <Diagnostics title="Errors" items={runState?.errors || []} emptyText="No errors" />
-        <Diagnostics title="Warnings" items={runState?.warnings || []} emptyText="No warnings" />
-        <Diagnostics title="Revisions" items={runState?.revisions || []} emptyText="No revisions" />
+        <Diagnostics title="Errors" items={results.diagnostics?.errors || runState?.errors || []} emptyText="No errors" />
+        <Diagnostics title="Warnings" items={results.warnings?.warnings || runState?.warnings || []} emptyText="No warnings" />
+        <Diagnostics title="Revisions" items={results.revisions?.revisions || runState?.revisions || []} emptyText="No revisions recorded" />
       </section>
     </main>
   )
@@ -311,6 +317,7 @@ function DashboardTab({ tab, runState, results, lookup, filters, setFilters, set
   if (tab === 'testCases') return <TestCases results={results} setSelectedEntity={setSelectedEntity} />
   if (tab === 'traceability') return <Traceability results={results} lookup={lookup} setSelectedEntity={setSelectedEntity} />
   if (tab === 'validation') return <Validation results={results} runState={runState} />
+  if (tab === 'diagnostics') return <DiagnosticsTab results={results} runState={runState} />
   return <EmptyState text="Unknown dashboard section." />
 }
 
@@ -343,11 +350,12 @@ function Overview({ results, runState }) {
         ))}
       </section>
       <section className="two-column">
-        <Distribution title="Rating Distribution" data={stats.rating_distribution} />
-        <Distribution title="Language Distribution" data={stats.language_distribution} />
+        <Distribution title="Rating Distribution" data={stats.rating_distribution} sourceLabel="Deterministic Statistics" />
+        <Distribution title="Language Distribution" data={stats.language_distribution} sourceLabel="Deterministic Statistics" />
       </section>
       <section className="section-block">
         <h3>Run Metadata</h3>
+        <TagRow labels={['Evidence', 'Deterministic', 'Model + Evidence', 'Uncertainty', 'Conflict']} />
         <dl className="definition-grid">
           <FragmentPair term="Analysis Goal" description={runState.analysis_goal} />
           <FragmentPair term="Average Rating" description={formatValue(stats.average_rating)} />
@@ -467,8 +475,8 @@ function Processing({ results }) {
         <Metric label="Near Duplicate Candidates" value={report.near_duplicate_count ?? stats.near_duplicate_candidates ?? 0} />
       </section>
       <section className="two-column">
-        <Distribution title="Rating Distribution" data={stats.rating_distribution} />
-        <Distribution title="Language Distribution" data={stats.language_distribution} />
+        <Distribution title="Rating Distribution" data={stats.rating_distribution} sourceLabel="Deterministic Statistics" />
+        <Distribution title="Language Distribution" data={stats.language_distribution} sourceLabel="Deterministic Statistics" />
       </section>
       <KeyValuePanel title="Processing Report" data={report} />
     </div>
@@ -552,14 +560,22 @@ function Findings({ results, lookup, setSelectedEntity }) {
             </header>
             <h3>{finding.title || finding.name}</h3>
             <p>{finding.statement || finding.description}</p>
+            <TagRow labels={['Model + Evidence', 'Evidence', 'Uncertainty', 'Conflict']} />
             <MetaLine
               items={[
-                ['Support', finding.support_count],
+                ['Support Count [Deterministic]', finding.support_count],
                 ['Evidence Strength', finding.evidence_strength || report.evidence_strength],
                 ['Conflicts', finding.conflicting_count ?? report.conflicting_count ?? 0],
                 ['Uncertainty', finding.uncertainty],
               ]}
             />
+            <ListBlock title="Supporting Review IDs [Evidence]" items={finding.review_ids} />
+            <ListBlock title="Evidence Limitations [Uncertainty]" items={report.evidence_limitations} emphasized />
+            {listOf(finding.conflicting_review_ids).length ? (
+              <ListBlock title="Conflicting Evidence [Conflict]" items={finding.conflicting_review_ids} emphasized />
+            ) : (
+              <div className="conflict-note">[Conflict] No conflicting evidence recorded</div>
+            )}
             <button
               type="button"
               className="secondary compact"
@@ -662,7 +678,7 @@ function Prds({ results, setSelectedEntity }) {
           <ListBlock title="Requirements" items={prd.requirement_ids} />
           <ListBlock title="Risks" items={prd.risks} />
           <ListBlock title="Success Metrics" items={prd.success_metrics} />
-          <ListBlock title="Open Questions" items={prd.open_questions} emphasized />
+          <OpenQuestionBlock items={prd.open_questions} />
         </article>
       ))}
       {!prds.length ? <EmptyState text="PRDs are not available for this run yet." /> : null}
@@ -745,8 +761,22 @@ function Validation({ results, runState }) {
   const validation = results.validation?.validation || {}
   const metadata = results.validation?.metadata || {}
   const registry = metadata.model_registry || []
+  const runtimeStatus = validation.runtime_validation_status || runState.runtime_validation_status
+  const submissionStatus = validation.submission_validation_status || runState.submission_validation_status
   return (
     <div className="tab-content">
+      <section className="validation-banner">
+        <div>
+          <strong>Backend Analysis</strong>
+          <StatusPill value={runtimeStatus} label="Runtime Pipeline" />
+          <p>{runtimePipelineMessage(runtimeStatus)}</p>
+        </div>
+        <div>
+          <strong>Final Submission</strong>
+          <StatusPill value={submissionStatus} label="Submission Validation" />
+          <p>Pending checks remain visible and are not treated as runtime failure.</p>
+        </div>
+      </section>
       <section className="metric-grid">
         <Metric label="Runtime Validation" value={validation.runtime_validation_status || runState.runtime_validation_status} />
         <Metric label="Submission Validation" value={validation.submission_validation_status || runState.submission_validation_status} />
@@ -757,7 +787,7 @@ function Validation({ results, runState }) {
         <Metric label="AI / Deterministic Boundary" value={validation.ai_deterministic_boundary || 'pending'} />
         <Metric label="Statistics / Model Separation" value={validation.statistics_model_separation || 'pending'} />
       </section>
-      <ListBlock title="Submission Blockers" items={validation.submission_blockers || results.validation?.submission_blockers} emphasized />
+      <ListBlock title="Pending Checks" items={pendingChecks(validation, results.validation)} emphasized />
       <section className="section-block">
         <h3>Model / Data Metadata</h3>
         {registry.length ? (
@@ -769,6 +799,7 @@ function Validation({ results, runState }) {
               <FragmentPair term="Max Tokens" description={formatValue(item.max_tokens)} />
               <FragmentPair term="Temperature" description={formatValue(item.temperature)} />
               <FragmentPair term="Stream" description={formatValue(item.stream)} />
+              <FragmentPair term="Timeout" description={formatValue(item.timeout_seconds)} />
             </dl>
           ))
         ) : (
@@ -780,11 +811,77 @@ function Validation({ results, runState }) {
   )
 }
 
+function DiagnosticsTab({ results, runState }) {
+  const diagnostics = results.diagnostics || {}
+  const warnings = results.warnings || {}
+  const revisions = results.revisions || {}
+  const metadata = results.metadata || {}
+  return (
+    <div className="tab-content">
+      <FailurePropagationNotice diagnostics={diagnostics} runState={runState} inPanel />
+      <section className="three-column">
+        <Diagnostics title="Errors" items={diagnostics.errors || runState.errors || []} emptyText="No errors" />
+        <Diagnostics title="Warnings" items={warnings.warnings || runState.warnings || []} emptyText="No warnings" />
+        <Diagnostics title="Revisions" items={revisions.revisions || runState.revisions || []} emptyText="No revisions recorded" />
+      </section>
+      <section className="section-block">
+        <h3>Data Metadata</h3>
+        <TagRow labels={['Evidence', 'Run Artifact Snapshot', metadata.data?.cached_label || 'Cached for this Run']} />
+        <dl className="definition-grid">
+          <FragmentPair term="Data Source" description={metadata.data?.provider || 'unknown'} />
+          <FragmentPair term="Territory" description={metadata.data?.territory || 'US'} />
+          <FragmentPair term="App ID" description={metadata.data?.app_id || runState.app_id || 'unknown'} />
+          <FragmentPair term="Collection Time" description={metadata.data?.collection_time || 'unknown'} />
+          <FragmentPair term="Requested Limit" description={formatValue(metadata.data?.requested_limit)} />
+          <FragmentPair term="Actual Count" description={formatValue(metadata.data?.actual_count)} />
+        </dl>
+        <ListBlock title="Limitations [Uncertainty]" items={metadata.data?.limitations} emphasized />
+      </section>
+      <section className="section-block">
+        <h3>Model Metadata</h3>
+        <TagRow labels={['Model-generated', 'No API Key Displayed']} />
+        {(metadata.model?.model_registry || []).map((item, index) => (
+          <dl className="definition-grid compact-grid" key={`${item.task || item.provider}-${index}`}>
+            <FragmentPair term="Task" description={item.task || 'unknown'} />
+            <FragmentPair term="Provider" description={item.provider || 'DeepSeek'} />
+            <FragmentPair term="Model" description={item.model || 'unknown'} />
+            <FragmentPair term="Thinking" description={item.thinking || 'disabled'} />
+            <FragmentPair term="Max Tokens" description={formatValue(item.max_tokens)} />
+            <FragmentPair term="Temperature" description={formatValue(item.temperature)} />
+            <FragmentPair term="Timeout" description={formatValue(item.timeout_seconds)} />
+            <FragmentPair term="Stream" description={formatValue(item.stream)} />
+          </dl>
+        ))}
+      </section>
+    </div>
+  )
+}
+
+function FailurePropagationNotice({ diagnostics, runState, inPanel = false }) {
+  const propagation = diagnostics?.failure_propagation
+  if (!propagation?.has_failure) return null
+  return (
+    <section className={`failure-propagation ${inPanel ? 'in-panel' : ''}`}>
+      <strong>Failure Propagation</strong>
+      <p>{propagation.message || `由于 ${propagation.failed_stage} 阶段失败，后续阶段未执行。`}</p>
+      <MetaLine
+        items={[
+          ['Failed Stage', propagation.failed_stage],
+          ['Skipped Stages', listOf(propagation.skipped_stages).join(', ')],
+          ['Run Status', runState?.status],
+        ]}
+      />
+    </section>
+  )
+}
+
 function EvidencePanel({ runState, results, lookup, selectedEntity, setSelectedEntity, setSelectedTab }) {
   const entity = selectedEntity ? lookupEntity(lookup, selectedEntity) : null
   const chain = selectedEntity ? buildChain(selectedEntity, results.traceability?.graph || {}) : []
   const reviewIds = evidenceReviewIds(selectedEntity, entity, results.traceability?.graph || {})
   const reviews = reviewIds.map((id) => lookup.reviews[id]).filter(Boolean)
+  const conflictIds = selectedEntity?.type === 'finding' ? listOf(entity?.conflicting_review_ids) : []
+  const conflictReviews = conflictIds.map((id) => lookup.reviews[id]).filter(Boolean)
   return (
     <div>
       <h2>Evidence / Metadata</h2>
@@ -797,8 +894,15 @@ function EvidencePanel({ runState, results, lookup, selectedEntity, setSelectedE
             <strong className="mono">{selectedEntity.id}</strong>
           </div>
           {entity ? <EntitySummary entity={entity} /> : <div className="warning-note">Entity not found in current run artifacts.</div>}
+          <TagRow labels={['Evidence', 'Traceability', 'Uncertainty', 'Conflict']} />
           <section className="section-block">
             <h3>Traceability Chain</h3>
+            <div className="quick-actions">
+              <span>View Source Evidence</span>
+              <span>View Upstream Finding</span>
+              <span>View Related Requirement</span>
+              <span>View Related Test Cases</span>
+            </div>
             {chain.length ? (
               <ol className="chain-list">
                 {chain.map((item) => (
@@ -821,7 +925,7 @@ function EvidencePanel({ runState, results, lookup, selectedEntity, setSelectedE
             )}
           </section>
           <section className="section-block">
-            <h3>Evidence Reviews</h3>
+            <h3>Evidence Reviews [Evidence]</h3>
             {reviews.map((review) => (
               <article className="review-evidence" key={review.id}>
                 <div>
@@ -833,6 +937,20 @@ function EvidencePanel({ runState, results, lookup, selectedEntity, setSelectedE
               </article>
             ))}
             {!reviews.length ? <EmptyState text="No direct review evidence is available for this selection." /> : null}
+          </section>
+          <section className="section-block">
+            <h3>Conflicting Evidence [Conflict]</h3>
+            {conflictReviews.map((review) => (
+              <article className="review-evidence conflict" key={review.id}>
+                <div>
+                  <span className="mono">{review.id}</span>
+                  <strong>{review.rating} stars</strong>
+                </div>
+                <h4>{review.raw_title || review.title || review.clean_title || 'Untitled'}</h4>
+                <p>{review.raw_body || review.body || review.clean_body}</p>
+              </article>
+            ))}
+            {!conflictReviews.length ? <div className="conflict-note">No conflicting evidence recorded</div> : null}
           </section>
           <KeyValuePanel title="Run" data={{ run_id: runState?.run_id, status: runState?.status, source: results.reviews?.source }} />
         </>
@@ -870,20 +988,28 @@ function StageList({ stages, selectedStageId, onSelect }) {
   )
 }
 
-function StageDetail({ stage }) {
+function StageDetail({ stage, revisions }) {
   if (!stage) return null
+  const stageRevisions = listOf(revisions).filter((revision) => revision.stage === stage.stage)
   return (
     <section className="stage-detail">
       <h3>Stage Detail</h3>
       <dl className="definition-grid compact-grid">
         <FragmentPair term="Status" description={stage.status} />
-        <FragmentPair term="Elapsed" description={stage.elapsed_seconds ? `${stage.elapsed_seconds}s` : 'pending'} />
+        <FragmentPair term="Started" description={stage.started_at || 'pending'} />
+        <FragmentPair term="Completed" description={stage.completed_at || 'pending'} />
+        <FragmentPair term="Elapsed" description={stage.elapsed_seconds !== null && stage.elapsed_seconds !== undefined ? `${stage.elapsed_seconds}s` : 'pending'} />
         <FragmentPair term="Message" description={stage.message || 'none'} />
       </dl>
       <KeyValuePanel title="Summary" data={stage.summary || {}} />
       <ListBlock title="Artifacts" items={stage.artifacts} />
       <ListBlock title="Warnings" items={stage.warnings} emphasized />
       <ListBlock title="Errors" items={(stage.errors || []).map((error) => `${error.type}: ${error.message}`)} emphasized />
+      <ListBlock
+        title="Revisions"
+        items={stageRevisions.map((revision) => `${revision.revision_id}: ${revision.status} · ${revision.reason}`)}
+        emphasized
+      />
     </section>
   )
 }
@@ -893,12 +1019,19 @@ function Diagnostics({ title, items, emptyText }) {
     <div className="diagnostic">
       <h2>{title}</h2>
       {items.length ? (
-        <ul>
+        <ul className="diagnostic-list">
           {items.map((item, index) => (
-            <li key={`${title}-${index}`}>
-              <span className="mono">{item.stage || item.revision_id || 'run'}</span>
-              <span>{item.type || item.status || 'status'}</span>
-              <strong>{item.message || item.reason}</strong>
+            <li className="diagnostic-card" key={`${title}-${index}`}>
+              <div className="diagnostic-head">
+                <span className="type-badge">{item.category || title.replace(/s$/, '')}</span>
+                <strong className="mono">{item.stage || item.revision_id || 'run'}</strong>
+              </div>
+              <dl className="definition-grid compact-grid">
+                <FragmentPair term="Type" description={item.type || item.status || 'status'} />
+                <FragmentPair term="Message" description={item.message || item.reason || 'none'} />
+                <FragmentPair term="Recoverable" description={formatValue(item.recoverable)} />
+                <FragmentPair term="Timestamp" description={item.timestamp || 'unknown'} />
+              </dl>
             </li>
           ))}
         </ul>
@@ -927,11 +1060,12 @@ function StatusPill({ value, label }) {
   )
 }
 
-function Distribution({ title, data }) {
+function Distribution({ title, data, sourceLabel }) {
   const entries = Object.entries(data || {})
   return (
     <section className="section-block">
       <h3>{title}</h3>
+      {sourceLabel ? <TagRow labels={[sourceLabel]} /> : null}
       {entries.length ? (
         <div className="distribution">
           {entries.map(([key, value]) => (
@@ -984,6 +1118,34 @@ function ListBlock({ title, items, emphasized = false }) {
         ))}
       </ul>
     </section>
+  )
+}
+
+function OpenQuestionBlock({ items }) {
+  const values = listOf(items)
+  if (!values.length) return null
+  return (
+    <section className="open-question-block">
+      <h4>Open Questions</h4>
+      <div className="status-line">Status: Open Product Decision</div>
+      <ul>
+        {values.map((item, index) => (
+          <li key={`open-question-${index}`}>{formatValue(item)}</li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
+function TagRow({ labels }) {
+  return (
+    <div className="tag-row">
+      {labels.map((label) => (
+        <span className="semantic-tag" key={label}>
+          [{label}]
+        </span>
+      ))}
+    </div>
   )
 }
 
@@ -1187,6 +1349,22 @@ function formatAcceptanceCriteria(items) {
     if (typeof item === 'string') return item
     return `${item.acceptance_criteria_id || item.id || 'AC'}: ${item.statement || item.description || JSON.stringify(item)}`
   })
+}
+
+function pendingChecks(validation, validationPayload) {
+  const blockers = listOf(validation?.submission_blockers || validationPayload?.submission_blockers)
+  if (blockers.length) return blockers
+  if (validation?.submission_validation_status === 'pending' || validationPayload?.submission_validation_status === 'pending') {
+    return ['UI readiness', 'Final generalized live input tests', 'Final delivery documentation']
+  }
+  return []
+}
+
+function runtimePipelineMessage(status) {
+  if (status === 'pass' || status === 'completed') return 'Runtime Pipeline Completed'
+  if (status === 'fail' || status === 'failed') return 'Runtime Pipeline Failed'
+  if (status === 'pending') return 'Runtime Pipeline Pending'
+  return `Runtime Pipeline ${formatValue(status)}`
 }
 
 function formatValue(value) {

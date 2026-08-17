@@ -401,10 +401,19 @@ button.compact {
 }
 
 .two-column,
-.trace-grid {
+.trace-grid,
+.three-column {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+}
+
+.two-column,
+.trace-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.three-column {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
 }
 
 .distribution {
@@ -599,10 +608,89 @@ tbody tr:hover {
   font-size: 13px;
 }
 
+.conflict-note {
+  border: 1px solid #d8c3c1;
+  border-radius: 6px;
+  background: #fff7f6;
+  color: #7f3833;
+  padding: 8px 10px;
+  font-size: 13px;
+}
+
+.failure-propagation {
+  width: min(1680px, 100%);
+  margin: 0 auto 12px;
+  border: 1px solid #e2b7b4;
+  border-radius: 8px;
+  background: #fff3f1;
+  color: #7f3833;
+  padding: 12px 14px;
+}
+
+.failure-propagation.in-panel {
+  width: auto;
+  margin: 0;
+}
+
+.failure-propagation p,
+.status-line {
+  margin: 5px 0 0;
+  font-size: 13px;
+}
+
+.tag-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 8px;
+}
+
+.semantic-tag {
+  display: inline-flex;
+  align-items: center;
+  min-height: 23px;
+  border: 1px solid #c8d4d9;
+  border-radius: 999px;
+  background: #f7f9fa;
+  color: #324852;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.quick-actions {
+  display: grid;
+  gap: 5px;
+  margin-bottom: 8px;
+  color: #52636e;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .rationale,
 .expected-result {
   border-left: 3px solid #bfd3dc;
   padding-left: 10px;
+}
+
+.open-question-block {
+  border: 1px solid #e3d1a5;
+  border-radius: 7px;
+  background: #fffbf0;
+  padding: 10px 12px;
+}
+
+.open-question-block h4 {
+  margin: 0;
+  color: #7a5515;
+  font-size: 13px;
+}
+
+.open-question-block ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  color: #25343b;
+  font-size: 13px;
 }
 
 .list-block {
@@ -686,6 +774,11 @@ tbody tr:hover {
   background: #fbfcfc;
 }
 
+.review-evidence.conflict {
+  border-color: #d8c3c1;
+  background: #fff9f8;
+}
+
 .review-evidence div {
   display: flex;
   justify-content: space-between;
@@ -713,10 +806,31 @@ tbody tr:hover {
   padding: 14px;
 }
 
-.diagnostic ul {
+.diagnostic ul,
+.diagnostic-list {
   display: grid;
   gap: 8px;
   padding-left: 18px;
+}
+
+.diagnostic-list {
+  list-style: none;
+  padding-left: 0;
+}
+
+.diagnostic-card {
+  border: 1px solid #dce4e7;
+  border-radius: 7px;
+  background: #fbfcfc;
+  padding: 10px;
+}
+
+.diagnostic-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
 }
 
 .diagnostic li span {
@@ -760,7 +874,8 @@ tbody tr:hover {
 
   .two-column,
   .trace-grid,
-  .trace-map-list {
+  .trace-map-list,
+  .three-column {
     grid-template-columns: 1fr;
   }
 }

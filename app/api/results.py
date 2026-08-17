@@ -147,6 +147,58 @@ def validation_payload(run: RunState) -> dict[str, Any]:
     }
 
 
+def errors_payload(run: RunState) -> dict[str, Any]:
+    errors = [_diagnostic_error(run, error.to_dict()) for error in run.errors]
+    return {
+        **_base(run, bool(errors)),
+        "errors": errors,
+        "failure_propagation": _failure_propagation(run),
+    }
+
+
+def warnings_payload(run: RunState) -> dict[str, Any]:
+    warnings = [_diagnostic_warning(run, warning.to_dict()) for warning in run.warnings]
+    return {
+        **_base(run, bool(warnings)),
+        "warnings": warnings,
+    }
+
+
+def revisions_payload(run: RunState) -> dict[str, Any]:
+    revisions = [_diagnostic_revision(run, revision.to_dict()) for revision in run.revisions]
+    return {
+        **_base(run, bool(revisions)),
+        "revisions": revisions,
+    }
+
+
+def metadata_payload(run: RunState) -> dict[str, Any]:
+    dataset = reviews_payload(run).get("dataset_metadata", {})
+    validation = validation_payload(run)
+    collection = _stage_by_id(run, "collection")
+    return {
+        **_base(run, True),
+        "data": {
+            "source_type": run.source_type,
+            "artifact_source": "Run Artifact Snapshot",
+            "cached_label": "Cached for this Run",
+            "provider": dataset.get("provider") or _summary_value(collection, "provider"),
+            "territory": dataset.get("territory") or _summary_value(collection, "territory") or run.storefront,
+            "app_id": dataset.get("app_id") or _summary_value(collection, "app_id") or run.app_id,
+            "collection_time": dataset.get("retrieved_at") or (collection.completed_at if collection else None),
+            "requested_limit": dataset.get("requested_limit") or _summary_value(collection, "requested_limit"),
+            "actual_count": dataset.get("actual_count") or _summary_value(collection, "actual_count"),
+            "limitations": dataset.get("limitations") or _summary_value(collection, "limitations") or [],
+        },
+        "model": validation.get("metadata", {}),
+        "validation": {
+            "runtime_validation_status": validation.get("runtime_validation_status"),
+            "submission_validation_status": validation.get("submission_validation_status"),
+            "submission_blockers": validation.get("submission_blockers", []),
+        },
+    }
+
+
 def _base(run: RunState, available: bool) -> dict[str, Any]:
     return {
         "run_id": run.run_id,
@@ -154,6 +206,78 @@ def _base(run: RunState, available: bool) -> dict[str, Any]:
         "source": "run_artifact_snapshot",
         "run_status": run.status,
     }
+
+
+def _diagnostic_error(run: RunState, error: dict[str, Any]) -> dict[str, Any]:
+    stage = _stage_by_id(run, error.get("stage"))
+    return {
+        "category": "Error",
+        "stage": error.get("stage"),
+        "type": error.get("type"),
+        "message": error.get("message"),
+        "recoverable": error.get("recoverable"),
+        "timestamp": _stage_timestamp(stage) or run.updated_at,
+    }
+
+
+def _diagnostic_warning(run: RunState, warning: dict[str, Any]) -> dict[str, Any]:
+    stage = _stage_by_id(run, warning.get("stage"))
+    return {
+        "category": "Warning",
+        "stage": warning.get("stage"),
+        "type": warning.get("type"),
+        "message": warning.get("message"),
+        "blocking": False,
+        "timestamp": _stage_timestamp(stage) or run.updated_at,
+    }
+
+
+def _diagnostic_revision(run: RunState, revision: dict[str, Any]) -> dict[str, Any]:
+    stage = _stage_by_id(run, revision.get("stage"))
+    return {
+        "category": "Revision",
+        "revision_id": revision.get("revision_id"),
+        "stage": revision.get("stage"),
+        "reason": revision.get("reason"),
+        "status": revision.get("status"),
+        "timestamp": _stage_timestamp(stage) or run.updated_at,
+    }
+
+
+def _failure_propagation(run: RunState) -> dict[str, Any]:
+    failed_stage = next((stage for stage in run.stages if stage.status == "failed"), None)
+    skipped = [stage.stage for stage in run.stages if stage.status == "skipped"]
+    if not failed_stage:
+        return {
+            "has_failure": False,
+            "failed_stage": None,
+            "skipped_stages": skipped,
+            "message": None,
+        }
+    return {
+        "has_failure": True,
+        "failed_stage": failed_stage.stage,
+        "skipped_stages": skipped,
+        "message": f"由于 {failed_stage.label_en} 阶段失败，后续阶段未执行。",
+    }
+
+
+def _stage_by_id(run: RunState, stage_id: Any):
+    if not isinstance(stage_id, str):
+        return None
+    return next((stage for stage in run.stages if stage.stage == stage_id), None)
+
+
+def _stage_timestamp(stage) -> str | None:
+    if not stage:
+        return None
+    return stage.completed_at or stage.started_at
+
+
+def _summary_value(stage, key: str) -> Any:
+    if not stage:
+        return None
+    return stage.summary.get(key)
 
 
 def _load_json(run: RunState, filename: str) -> dict[str, Any]:

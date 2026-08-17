@@ -102,6 +102,22 @@ def create_app(orchestrator: WorkflowOrchestrator | None = None) -> FastAPI:
     def get_validation(run_id: str) -> dict[str, Any]:
         return _result_payload(workflow, run_id, results.validation_payload)
 
+    @api.get("/api/runs/{run_id}/errors")
+    def get_errors(run_id: str) -> dict[str, Any]:
+        return _result_payload(workflow, run_id, results.errors_payload)
+
+    @api.get("/api/runs/{run_id}/warnings")
+    def get_warnings(run_id: str) -> dict[str, Any]:
+        return _result_payload(workflow, run_id, results.warnings_payload)
+
+    @api.get("/api/runs/{run_id}/revisions")
+    def get_revisions(run_id: str) -> dict[str, Any]:
+        return _result_payload(workflow, run_id, results.revisions_payload)
+
+    @api.get("/api/runs/{run_id}/metadata")
+    def get_metadata(run_id: str) -> dict[str, Any]:
+        return _result_payload(workflow, run_id, results.metadata_payload)
+
     return api
 
 
