@@ -50,8 +50,23 @@ TECHNICAL_TERMS = {
 GENERIC_METRICS = {
     "better user experience",
     "improve user experience",
+    "make the experience better",
+    "increase engagement",
+    "improve engagement",
+    "enhance engagement",
+    "increase user engagement",
+    "improve user satisfaction",
+    "increase user satisfaction",
+    "enhance user satisfaction",
+    "improve satisfaction",
+    "improved trust",
+    "improve trust",
     "用户体验更好",
+    "提高用户体验",
+    "改善用户体验",
     "用户更满意",
+    "提升参与度",
+    "增强用户满意度",
 }
 
 
@@ -253,10 +268,25 @@ def validate_prd_payload(
         )
         if _contains_technical_detail(implementation_text):
             implementation_errors.append(f"{prefix}: contains implementation detail")
+        if not success_metrics and not _has_metric_definition_open_question(open_questions):
+            metric_errors.append(
+                f"{prefix}.success_metrics: empty metrics require an open question for measurable success definition"
+            )
+
+        metric_evidence_text = _success_metric_evidence_text(
+            version=version or {},
+            requirements=[requirements_by_id[requirement_id] for requirement_id in requirement_ids if requirement_id in requirements_by_id],
+            findings=[findings_by_id[finding_id] for finding_id in finding_ids_for_prd if finding_id in findings_by_id],
+        )
+        seen_metrics: set[str] = set()
         for metric_index, metric in enumerate(success_metrics):
+            metric_key = _metric_key(metric)
+            if metric_key in seen_metrics:
+                metric_errors.append(f"{prefix}.success_metrics[{metric_index}]: duplicate metric")
+            seen_metrics.add(metric_key)
             if not _is_measurable_metric(metric):
                 metric_errors.append(f"{prefix}.success_metrics[{metric_index}]: not measurable")
-            if _has_unsupported_numeric_target(metric):
+            if _has_unsupported_numeric_target(metric, metric_evidence_text):
                 metric_errors.append(
                     f"{prefix}.success_metrics[{metric_index}]: contains unsupported numeric target"
                 )
@@ -530,12 +560,87 @@ def _is_measurable_metric(value: str) -> bool:
     normalized = value.strip().lower()
     if normalized in GENERIC_METRICS:
         return False
-    return bool(re.search(r"\d|%|rate|count|time|retention|conversion|decrease|increase|reduction|complaints|reviews", normalized))
+    if re.fullmatch(
+        r"(improve|increase|decrease|enhance|boost|raise|reduce)\s+(user\s+)?(experience|satisfaction|engagement|trust|retention)\.?",
+        normalized,
+    ):
+        return False
+    if re.fullmatch(r"(提高|提升|改善|增强)(用户体验|用户满意度|满意度|参与度|留存)\。?", normalized):
+        return False
+    return bool(
+        re.search(
+            r"\d|%|percentage|ratio|rate|count|time|duration|average|median|completion|retention|conversion|reduction|complaints|reviews",
+            normalized,
+        )
+    )
 
 
-def _has_unsupported_numeric_target(value: str) -> bool:
-    normalized = value.lower()
-    return bool(re.search(r"\b\d+(\.\d+)?\s*%", normalized))
+def _has_unsupported_numeric_target(value: str, evidence_text: str = "") -> bool:
+    metric_percentages = _percentage_values(value)
+    if not metric_percentages:
+        return False
+    evidence_percentages = _percentage_values(evidence_text)
+    return any(percentage not in evidence_percentages for percentage in metric_percentages)
+
+
+def _percentage_values(value: str) -> set[str]:
+    values: set[str] = set()
+    for match in re.finditer(r"\b(\d+(?:\.\d+)?)\s*%", value.lower()):
+        value_text = match.group(1)
+        if "." in value_text:
+            value_text = value_text.rstrip("0").rstrip(".")
+        values.add(value_text)
+    return values
+
+
+def _has_metric_definition_open_question(open_questions: list[str]) -> bool:
+    normalized = " ".join(open_questions).lower()
+    return bool(
+        re.search(
+            r"metric|measure|measurement|measurable|success|target|kpi|outcome|指标|衡量|度量|成功标准|目标",
+            normalized,
+        )
+    )
+
+
+def _success_metric_evidence_text(
+    *,
+    version: dict[str, Any],
+    requirements: list[dict[str, Any]],
+    findings: list[dict[str, Any]],
+) -> str:
+    parts: list[str] = [
+        _text(version.get("name")),
+        _text(version.get("goal")),
+        _text(version.get("rationale")),
+        " ".join(_list_text(version.get("risks"))),
+        " ".join(_list_text(version.get("success_metrics"))),
+    ]
+    for requirement in requirements:
+        parts.extend(
+            [
+                _text(requirement.get("title")),
+                _text(requirement.get("description")),
+                " ".join(_list_text(requirement.get("acceptance_criteria"))),
+                " ".join(_list_text(requirement.get("risks"))),
+                " ".join(_list_text(requirement.get("success_metrics"))),
+                _text(requirement.get("uncertainty")),
+            ]
+        )
+    for finding in findings:
+        parts.extend(
+            [
+                _text(finding.get("title")),
+                _text(finding.get("statement")),
+                _text(finding.get("summary")),
+                _text(finding.get("uncertainty")),
+            ]
+        )
+    return " ".join(parts)
+
+
+def _metric_key(value: str) -> str:
+    return re.sub(r"\s+", " ", value.strip().casefold())
 
 
 def _list_text(value: Any) -> list[str]:

@@ -164,6 +164,26 @@ class PRDValidatorTests(unittest.TestCase):
 
         self.assertTrue(result.passed)
 
+    def test_empty_success_metrics_require_metric_open_question(self) -> None:
+        payload = _payload()
+        payload["prds"][0]["success_metrics"] = []
+        payload["prds"][0]["open_questions"] = ["Confirm launch sequence."]
+        result = _validate(payload)
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_SUCCESS_METRIC_INVALID)
+
+    def test_empty_success_metrics_with_metric_open_question_allowed(self) -> None:
+        payload = _payload()
+        payload["prds"][0]["success_metrics"] = []
+        payload["prds"][0]["open_questions"] = [
+            "What measurable success metric should define billing clarity?",
+            "What proportion of the library should remain free?",
+        ]
+        result = _validate(payload)
+
+        self.assertTrue(result.passed)
+
     def test_multiple_prds(self) -> None:
         payload = _payload()
         payload["prds"].append(

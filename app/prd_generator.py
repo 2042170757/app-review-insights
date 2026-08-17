@@ -60,7 +60,9 @@ Rules:
 22. Analysis Goal is overall context only; it must not override any Version goal.
 23. For each PRD, the first item in goals must exactly match that Version's required_prd_goal.
 24. Every PRD must include at least one open question about evidence uncertainty, scope, metrics, or a product decision.
-25. Every success metric must be observable and measurable: phrase it with rate, count, time, retention, conversion, decrease, increase, reduction, complaints, reviews, or a numeric unit. Do not use vague wording such as "improved user experience" or "improved trust" as a standalone metric.
+25. Every success metric must be observable and measurable: phrase it with rate, count, time, percentage, retention, conversion, decrease, increase, reduction, complaints, reviews, or a numeric unit. Do not use vague wording such as "improved user experience", "better satisfaction", or "increase engagement" as a standalone metric.
+26. If the input Evidence, Requirement, and Version do not support a reliable success metric, return success_metrics as an empty list and add an open question asking what measurable success metric or target should be defined.
+27. If a metric concept is reasonable but the target value is a product decision, put that target definition in open_questions instead of inventing a number.
 
 Return only JSON matching the existing PRD schema."""
 
@@ -249,19 +251,19 @@ def build_prd_request(
                         "non_goals": ["string"],
                         "requirement_ids": ["must exactly match Version requirement_ids"],
                         "risks": [],
-                        "success_metrics": ["measurable metric without invented numeric target"],
-                        "open_questions": ["questions for unsupported product decisions"],
+                        "success_metrics": ["observable metric without invented numeric target, or [] if no reliable metric is supported"],
+                        "open_questions": ["questions for unsupported product decisions, including metric definition or target when success_metrics is []"],
                     }
                 ]
             },
             "open_question_guidance": {
-                "all_prds": "Every PRD must include at least one open question. If no specific requirement question is listed, include a product-scope, evidence-uncertainty, or metric-definition question.",
+                "all_prds": "Every PRD must include at least one open question. If no specific requirement question is listed, include a product-scope, evidence-uncertainty, or metric definition question. If success_metrics is empty, open_questions must ask what measurable success metric or target should be defined.",
                 "REQ-001": "The exact free access proportion or threshold should remain an open question if not evidence-backed.",
                 "REQ-007": "The content refresh cadence, frequency, or timing should remain an open question if not evidence-backed.",
                 "REQ-008": "The specific support channels should remain an open question if not evidence-backed.",
             },
             "goal_alignment_rule": "For each PRD, goals[0] must exactly equal the matching validated_versions[].required_prd_goal. Additional goals may expand that Version goal but must not replace it.",
-            "success_metric_rule": "Every success metric must be phrased as an observable metric using rate, count, time, retention, conversion, decrease, increase, reduction, complaints, reviews, or a numeric unit. Avoid vague standalone metrics such as improved trust, improved user experience, or better satisfaction.",
+            "success_metric_rule": "Every success metric must be phrased as an observable metric using rate, count, time, percentage, retention, conversion, decrease, increase, reduction, complaints, reviews, or a numeric unit. Avoid vague standalone metrics such as improved trust, improved user experience, better satisfaction, or increase engagement. Do not invent target numbers such as 10%, 20%, 30%, or 50% unless those numbers exist in the input. If no reliable metric is supported, return success_metrics: [] and add an open question for metric definition or target.",
         },
         ensure_ascii=False,
         indent=2,
@@ -297,6 +299,7 @@ def build_default_mock_output(
         )
         goals = [_text(version.get("goal"))]
         evidence_refs = requirement_ids[:2] + finding_ids[:2]
+        success_metrics = _metrics_for_version(version)
         prds.append(
             {
                 "prd_id": f"PRD-{version_id}",
@@ -311,8 +314,8 @@ def build_default_mock_output(
                 "non_goals": ["Do not expand scope beyond the validated requirements in this version."],
                 "requirement_ids": requirement_ids,
                 "risks": list(version.get("risks", [])),
-                "success_metrics": _metrics_for_version(version),
-                "open_questions": _open_questions_for_requirements(requirement_ids),
+                "success_metrics": success_metrics,
+                "open_questions": _open_questions_for_prd(requirement_ids, success_metrics),
             }
         )
     return json.dumps({"prds": prds}, ensure_ascii=False)
@@ -387,7 +390,7 @@ def _metrics_for_version(version: dict[str, Any]) -> list[str]:
     metrics = [_text(item) for item in version.get("success_metrics", []) if _text(item)]
     if metrics:
         return metrics
-    return ["Decrease in future negative reviews linked to this version's requirements."]
+    return []
 
 
 def _open_questions_for_requirements(requirement_ids: list[str]) -> list[str]:
@@ -400,6 +403,13 @@ def _open_questions_for_requirements(requirement_ids: list[str]) -> list[str]:
         questions.append("Confirm which support channels are appropriate for users.")
     if not questions:
         questions.append("Confirm the final product scope and success metric definitions before delivery.")
+    return questions
+
+
+def _open_questions_for_prd(requirement_ids: list[str], success_metrics: list[str]) -> list[str]:
+    questions = _open_questions_for_requirements(requirement_ids)
+    if not success_metrics and not any("success metric" in question.lower() or "measurable" in question.lower() for question in questions):
+        questions.append("What measurable success metric and target should define success for this PRD?")
     return questions
 
 

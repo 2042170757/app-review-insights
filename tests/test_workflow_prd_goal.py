@@ -35,6 +35,8 @@ class WorkflowPRDGoalTests(unittest.TestCase):
         self.assertIn("observable metric", payload["success_metric_rule"])
         self.assertIn("rate", payload["success_metric_rule"])
         self.assertIn("Avoid vague standalone metrics", payload["success_metric_rule"])
+        self.assertIn("success_metrics: []", payload["success_metric_rule"])
+        self.assertIn("metric definition", payload["open_question_guidance"]["all_prds"])
 
     def test_analysis_goal_does_not_replace_version_goal_in_default_prd(self) -> None:
         raw_output = build_default_mock_output(roadmap=_roadmap(), requirements=_requirements())

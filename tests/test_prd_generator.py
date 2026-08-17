@@ -126,6 +126,18 @@ class PRDGeneratorTests(unittest.TestCase):
             payload["validated_versions"][0]["requirements"][0]["findings"][0]["evidence_report"]["finding_id"],
             "FINDING-001",
         )
+        self.assertIn("success_metric_rule", payload)
+        self.assertIn("success_metrics: []", payload["success_metric_rule"])
+        self.assertIn("metric definition", payload["open_question_guidance"]["all_prds"])
+
+    def test_default_mock_output_allows_empty_metrics_with_open_question(self) -> None:
+        roadmap = _roadmap()
+        roadmap["versions"][0]["success_metrics"] = []
+
+        payload = json.loads(build_default_mock_output(roadmap=roadmap, requirements=_requirements()))
+
+        self.assertEqual(payload["prds"][0]["success_metrics"], [])
+        self.assertTrue(any("success metric" in question for question in payload["prds"][0]["open_questions"]))
 
     def test_invalid_json_marks_generation_failed(self) -> None:
         provider = create_mock_provider("{not json")

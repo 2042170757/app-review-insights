@@ -934,7 +934,7 @@ function Prds({ results, setSelectedEntity }) {
           <ListBlock title="Non-Goals" items={prd.non_goals} />
           <ListBlock title="Requirements" items={prd.requirement_ids} />
           <ListBlock title="Risks" items={prd.risks} />
-          <ListBlock title="Success Metrics" items={prd.success_metrics} />
+          <SuccessMetricsBlock items={prd.success_metrics} />
           <OpenQuestionBlock items={prd.open_questions} />
         </article>
       ))}
@@ -1421,6 +1421,20 @@ function OpenQuestionBlock({ items }) {
           <li key={`open-question-${index}`}>{formatValue(item)}</li>
         ))}
       </ul>
+    </section>
+  )
+}
+
+function SuccessMetricsBlock({ items }) {
+  const values = listOf(items)
+  if (values.length) {
+    return <ListBlock title="Success Metrics" items={values} />
+  }
+  return (
+    <section className="open-question-block">
+      <h4>Success Metrics</h4>
+      <div className="status-line">No validated success metrics defined yet.</div>
+      <p>Product decision required: define measurable success metrics.</p>
     </section>
   )
 }
