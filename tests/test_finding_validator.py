@@ -56,6 +56,26 @@ class FindingValidatorTests(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertEqual(result.status, STATUS_INELIGIBLE_ISSUE)
 
+    def test_positive_feedback_finding_type_is_allowed_when_issue_is_eligible(self) -> None:
+        result = _validate(
+            _payload(
+                issue_ids=["ISSUE-007"],
+                review_ids=["r7"],
+                support_count=1,
+                finding_type="positive_feedback",
+            ),
+            eligible_issue_ids={"ISSUE-001", "ISSUE-004", "ISSUE-007"},
+        )
+
+        self.assertTrue(result.passed)
+        self.assertEqual(result.findings[0].finding_type, "positive_feedback")
+
+    def test_invalid_finding_type(self) -> None:
+        result = _validate(_payload(finding_type="invalid_type"))
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_SCHEMA_VALIDATION_FAILED)
+
     def test_neutral_observation_issue_is_rejected(self) -> None:
         result = _validate(_payload(issue_ids=["ISSUE-008"], review_ids=["r8"], support_count=1))
 
@@ -111,11 +131,11 @@ class FindingValidatorTests(unittest.TestCase):
         self.assertEqual(result.status, STATUS_SCOPE_OVERCLAIM)
 
 
-def _validate(payload: dict):
-    return _validate_raw(json.dumps(payload))
+def _validate(payload: dict, *, eligible_issue_ids: set[str] | None = None):
+    return _validate_raw(json.dumps(payload), eligible_issue_ids=eligible_issue_ids)
 
 
-def _validate_raw(raw_text: str):
+def _validate_raw(raw_text: str, *, eligible_issue_ids: set[str] | None = None):
     return validate_finding_output(
         raw_text,
         issues_by_id={
@@ -125,7 +145,7 @@ def _validate_raw(raw_text: str):
             "ISSUE-008": {"issue_id": "ISSUE-008", "review_ids": ["r8"]},
         },
         valid_review_ids={"r1", "r2", "r3", "r4", "r7", "r8"},
-        eligible_issue_ids={"ISSUE-001", "ISSUE-004"},
+        eligible_issue_ids=eligible_issue_ids or {"ISSUE-001", "ISSUE-004"},
     )
 
 

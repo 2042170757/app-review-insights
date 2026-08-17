@@ -23,6 +23,7 @@ class RequirementSchemaTests(unittest.TestCase):
         )
 
         self.assertEqual(requirement.requirement_id, "REQ-001")
+        self.assertEqual(requirement.requirement_type, "problem")
         self.assertEqual(requirement.source_review_ids, ["r1"])
 
     def test_generation_output_dataclass(self) -> None:
@@ -39,6 +40,8 @@ class RequirementSchemaTests(unittest.TestCase):
         self.assertIn("priority", required)
         self.assertIn("priority_rationale", required)
         self.assertIn("uncertainty", required)
+        self.assertNotIn("requirement_type", required)
+        self.assertIn("requirement_type", REQUIREMENT_JSON_SCHEMA["properties"]["requirements"]["items"]["properties"])
 
 
 if __name__ == "__main__":

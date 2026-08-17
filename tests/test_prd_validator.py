@@ -141,6 +141,33 @@ class PRDValidatorTests(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertEqual(result.status, STATUS_UNSUPPORTED_PRODUCT_DIRECTION)
 
+    def test_positive_workout_scope_is_supported(self) -> None:
+        payload = {
+            "prds": [
+                {
+                    "prd_id": "PRD-V2",
+                    "version_id": "V2",
+                    "title": "Preserve workout effectiveness",
+                    "overview": "Preserve workout effectiveness, motivation, and fitness routine clarity.",
+                    "problem_statement": "Users value workout effectiveness and motivation in the current review sample.",
+                    "evidence_summary": "Evidence is traceable through REQ-003 and FINDING-002.",
+                    "goals": ["Improve workout content quality."],
+                    "non_goals": [],
+                    "requirement_ids": ["REQ-003"],
+                    "risks": [],
+                    "success_metrics": [],
+                    "open_questions": ["What measurable success metric should define preservation of workout effectiveness?"],
+                }
+            ]
+        }
+        requirements = _requirements_by_id_with_text()
+        requirements["REQ-003"]["title"] = "Preserve workout effectiveness"
+        requirements["REQ-003"]["description"] = "Preserve health, fitness, motivation, and workout routine value."
+        result = _validate(payload, requirements_by_id=requirements)
+
+        self.assertTrue(result.passed)
+        self.assertEqual(result.status, STATUS_SUCCESS)
+
     def test_missing_open_question_for_uncertain_product_parameter(self) -> None:
         payload = _payload()
         payload["prds"][0]["open_questions"] = []

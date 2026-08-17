@@ -247,19 +247,71 @@ class RequirementGenerationTests(unittest.TestCase):
         self.assertEqual(payload["validated_findings"][0]["finding_id"], "FINDING-001")
         self.assertEqual(payload["validated_findings"][0]["evidence_report"]["evidence_strength"], "High")
 
+    def test_positive_requirement_request_uses_preservation_framing(self) -> None:
+        request = build_requirement_request(
+            findings=[
+                {
+                    **_findings()[0],
+                    "finding_type": "positive_feedback",
+                    "title": "Short workouts are valued",
+                }
+            ],
+            evidence_report=_evidence_report(),
+            analysis_goal="positive goal",
+            analysis_focus="positive_feedback_analysis",
+        )
+        payload = json.loads(request.user_prompt)
 
-def _generate(raw_output: str):
-    return _generate_with_provider(_Provider(raw_output))
+        self.assertEqual(payload["analysis_focus"], "positive_feedback_analysis")
+        self.assertIn("preservation requirements", payload["requirement_type_rule"])
+        self.assertIn("Do not frame valued experiences as problems", request.system_prompt)
+
+    def test_positive_requirement_generation(self) -> None:
+        requirement = _requirement(
+            requirement_type="positive_feedback",
+            title="Preserve short workout access",
+            description="Preserve the valued short workout experience reflected in the review sample.",
+            acceptance_criteria=["Users can still identify short workouts before starting a session."],
+        )
+        result = _generate(
+            _raw_requirements([requirement]),
+            findings=[
+                {
+                    **_findings()[0],
+                    "finding_type": "positive_feedback",
+                    "title": "Short workouts are valued",
+                }
+            ],
+            analysis_focus="positive_feedback_analysis",
+        )
+
+        self.assertTrue(result.validation.passed)
+        self.assertEqual(result.requirements[0]["requirement_type"], "positive_feedback")
 
 
-def _generate_with_provider(provider: "_Provider"):
+def _generate(
+    raw_output: str,
+    *,
+    findings: list[dict] | None = None,
+    analysis_focus: str = "problem_analysis",
+):
+    return _generate_with_provider(_Provider(raw_output), findings=findings, analysis_focus=analysis_focus)
+
+
+def _generate_with_provider(
+    provider: "_Provider",
+    *,
+    findings: list[dict] | None = None,
+    analysis_focus: str = "problem_analysis",
+):
     with TemporaryDirectory() as temp_dir:
         return generate_requirements(
-            findings=_findings(),
+            findings=findings or _findings(),
             finding_validation=_finding_validation(),
             evidence_report=_evidence_report(),
             provider=provider,
             analysis_goal="goal",
+            analysis_focus=analysis_focus,
             output_dir=Path(temp_dir),
             is_mock=True,
         )
@@ -272,6 +324,7 @@ def _raw_requirements(requirements: list[dict]) -> str:
 def _requirement(**overrides) -> dict:
     requirement = {
         "requirement_id": "REQ-001",
+        "requirement_type": "problem",
         "finding_ids": ["FINDING-001"],
         "title": "Clarify subscription terms",
         "description": "Users need subscription cost, renewal, and access limits explained before commitment.",

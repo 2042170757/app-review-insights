@@ -35,7 +35,20 @@ class WorkflowModelsTests(unittest.TestCase):
         self.assertIsNone(run.current_stage)
         self.assertEqual(run.progress, 0.0)
         self.assertEqual(run.app_id, "123")
+        self.assertEqual(run.analysis_focus, "problem_analysis")
         self.assertTrue(run.is_mock)
+
+    def test_run_state_normalizes_analysis_focus(self) -> None:
+        run = new_run_state(
+            run_id="run-1",
+            app_url="https://apps.apple.com/us/app/example/id123",
+            analysis_goal="Goal",
+            analysis_focus="positive_feedback",
+            storefront="US",
+            app_id="123",
+        )
+
+        self.assertEqual(run.analysis_focus, "positive_feedback_analysis")
 
     def test_stage_initialization(self) -> None:
         stages = initialize_stage_states()

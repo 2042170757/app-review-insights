@@ -130,6 +130,32 @@ class PRDGeneratorTests(unittest.TestCase):
         self.assertIn("success_metrics: []", payload["success_metric_rule"])
         self.assertIn("metric definition", payload["open_question_guidance"]["all_prds"])
 
+    def test_positive_requirement_rule_prefers_empty_metrics_when_unsupported(self) -> None:
+        request = build_prd_request(
+            requirements=[{"requirement_id": "REQ-001", "requirement_type": "positive_feedback", "finding_ids": ["FINDING-001"]}],
+            roadmap={
+                "versions": [
+                    {
+                        "version_id": "V1",
+                        "name": "Preserve strengths",
+                        "goal": "Preserve valued workout strengths.",
+                        "requirement_ids": ["REQ-001"],
+                        "rationale": "Positive evidence.",
+                        "risks": [],
+                        "success_metrics": [],
+                    }
+                ]
+            },
+            findings=[{"finding_id": "FINDING-001", "finding_type": "positive_feedback", "issue_ids": ["ISSUE-001"], "review_ids": ["review-001"]}],
+            evidence_report=_evidence_report(),
+            analysis_goal="positive goal",
+        )
+        payload = json.loads(request.user_prompt)
+
+        self.assertIn("positive_feedback Requirements", payload["requirement_type_rule"])
+        self.assertIn("success_metrics as []", payload["requirement_type_rule"])
+        self.assertIn("remains high", request.system_prompt)
+
     def test_default_mock_output_allows_empty_metrics_with_open_question(self) -> None:
         roadmap = _roadmap()
         roadmap["versions"][0]["success_metrics"] = []

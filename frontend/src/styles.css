@@ -655,6 +655,7 @@ tbody tr:hover {
 }
 
 .type-badge.problem,
+.type-badge.product_problem,
 .status-pill.pass,
 .status-pill.completed {
   border-color: #b9d9c8;

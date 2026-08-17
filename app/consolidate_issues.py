@@ -8,6 +8,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from app.analysis_intent import DEFAULT_ANALYSIS_FOCUS, normalize_analysis_focus
 from app.issue_consolidation import (
     DEFAULT_ANALYSIS_DIR,
     DEFAULT_ISSUE_GOAL,
@@ -31,11 +32,19 @@ def main() -> int:
     parser.add_argument("--topics", type=Path, default=DEFAULT_TOPICS_PATH)
     parser.add_argument("--provider", choices=["mock", "deepseek"], default="mock")
     parser.add_argument("--goal", default=DEFAULT_ISSUE_GOAL)
+    parser.add_argument("--analysis-focus", default=DEFAULT_ANALYSIS_FOCUS)
     parser.add_argument("--mock-output", type=Path, help="Optional JSON file containing mock issue output.")
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_ANALYSIS_DIR)
     args = parser.parse_args()
 
     load_dotenv(override=False)
+    try:
+        analysis_focus = normalize_analysis_focus(args.analysis_focus)
+    except ValueError as exc:
+        print("Issue Consolidation: FAIL")
+        print(f"Failure Type: Invalid Analysis Focus")
+        print(f"Message: {exc}")
+        return 1
     reviews = load_processed_reviews(args.reviews)
     topics = load_topics(args.topics)
     if args.provider == "mock":
@@ -49,6 +58,7 @@ def main() -> int:
             topics,
             provider=MockLLMProvider(raw_output, model="mock-issue-model"),
             analysis_goal=args.goal,
+            analysis_focus=analysis_focus,
             output_dir=args.output_dir,
             is_mock=True,
         )
@@ -63,6 +73,7 @@ def main() -> int:
                 args.output_dir,
                 provider="deepseek",
                 model=os.environ.get(DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL),
+                analysis_focus=analysis_focus,
             )
         except ModelRequestError as exc:
             result = create_failure_result(
@@ -72,6 +83,7 @@ def main() -> int:
                 args.output_dir,
                 provider="deepseek",
                 model=os.environ.get(DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL),
+                analysis_focus=analysis_focus,
             )
         else:
             result = consolidate_issues(
@@ -79,6 +91,7 @@ def main() -> int:
                 topics,
                 provider=provider,
                 analysis_goal=args.goal,
+                analysis_focus=analysis_focus,
                 output_dir=args.output_dir,
                 is_mock=False,
             )
@@ -87,6 +100,7 @@ def main() -> int:
         print("Issue Consolidation: PASS")
         print(f"Provider: {result.provider}")
         print(f"Model: {result.model}")
+        print(f"Analysis Focus: {result.analysis_focus}")
         print(f"Issue Count: {len(result.issues)}")
         print(f"Unmerged Topic Count: {len(result.unmerged_topic_ids)}")
         print("Validation: PASS")
@@ -102,6 +116,7 @@ def main() -> int:
         print("Issue Consolidation: FAIL")
         print(f"Provider: {result.provider}")
         print(f"Model: {result.model}")
+        print(f"Analysis Focus: {result.analysis_focus}")
         print(f"Issue Count: {len(result.issues)}")
         print(f"Unmerged Topic Count: {len(result.unmerged_topic_ids)}")
         print(f"Validation: {result.validation.status}")

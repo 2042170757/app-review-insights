@@ -14,6 +14,12 @@ from typing import Any
 
 from dotenv import load_dotenv
 
+from app.analysis_intent import (
+    ANALYSIS_FOCUS_MIXED,
+    ANALYSIS_FOCUS_POSITIVE_FEEDBACK,
+    DEFAULT_ANALYSIS_FOCUS,
+    normalize_analysis_focus,
+)
 from app.analysis_scope import (
     ScopeFilterResult,
     apply_analysis_scope,
@@ -65,9 +71,27 @@ FINDING_STAGE_GOAL = (
     "基于 eligible Issues 和真实 Review Evidence 生成证据驱动 Findings；"
     "support review_ids 与 conflicting_review_ids 必须互不重叠。"
 )
+POSITIVE_FINDING_STAGE_GOAL = (
+    "基于 eligible positive_feedback Issues 和真实 Review Evidence 生成证据驱动 Positive Findings；"
+    "只描述用户认可、满意、愿意保留的体验，不要将正向反馈改写成产品问题。"
+)
+MIXED_FINDING_STAGE_GOAL = (
+    "基于 eligible Issues 和真实 Review Evidence 同时生成 product_problem Findings 与 positive_feedback Findings；"
+    "两类证据必须保持类型区分，support review_ids 与 conflicting_review_ids 必须互不重叠。"
+)
 REQUIREMENT_STAGE_GOAL = (
     "基于已验证 Findings 生成证据驱动的产品需求；只描述用户可感知的产品行为，"
     "不要描述技术实现、函数、接口、数据库、代码或框架。"
+    "Use product behavior wording only; never use the words function, functions, functionality, API, endpoint, database, code, class, component, React, or Vue."
+)
+POSITIVE_REQUIREMENT_STAGE_GOAL = (
+    "基于已验证 Positive Findings 生成证据驱动的保留型产品需求；"
+    "只描述需要保留或强化的用户可感知产品行为，不要将用户满意体验写成待修复问题。"
+    "Use product behavior wording only; never use the words function, functions, functionality, API, endpoint, database, code, class, component, React, or Vue."
+)
+MIXED_REQUIREMENT_STAGE_GOAL = (
+    "基于已验证 Findings 生成证据驱动的产品需求；problem Findings 生成问题解决需求，"
+    "positive_feedback Findings 生成保留型需求，并保持 requirement_type 区分。"
     "Use product behavior wording only; never use the words function, functions, functionality, API, endpoint, database, code, class, component, React, or Vue."
 )
 ROADMAP_STAGE_GOAL = "基于已验证 Requirements、优先级与证据报告生成版本路线图。"
@@ -149,6 +173,8 @@ class BackendPipelineRunner:
                     "deepseek",
                     "--goal",
                     context["analysis_goal"],
+                    "--analysis-focus",
+                    _analysis_focus(context),
                 ],
                 artifacts=[
                     "artifacts/analysis/issue_consolidation_raw.json",
@@ -159,7 +185,13 @@ class BackendPipelineRunner:
             )
             classification = self._command_stage(
                 stage=stage,
-                command=[sys.executable, "-m", "app.classify_issues"],
+                    command=[
+                        sys.executable,
+                        "-m",
+                        "app.classify_issues",
+                        "--analysis-focus",
+                        _analysis_focus(context),
+                    ],
                 artifacts=[
                     "artifacts/analysis/issue_classification.json",
                     "artifacts/analysis/finding_eligibility.json",
@@ -183,7 +215,9 @@ class BackendPipelineRunner:
                     "--provider",
                     "deepseek",
                     "--goal",
-                    FINDING_STAGE_GOAL,
+                    _finding_stage_goal(context),
+                    "--analysis-focus",
+                    _analysis_focus(context),
                 ],
                 artifacts=[
                     "artifacts/analysis/finding_generation_raw.json",
@@ -203,7 +237,9 @@ class BackendPipelineRunner:
                     "--provider",
                     "deepseek",
                     "--goal",
-                    REQUIREMENT_STAGE_GOAL,
+                    _requirement_stage_goal(context),
+                    "--analysis-focus",
+                    _analysis_focus(context),
                 ],
                 artifacts=[
                     "artifacts/analysis/requirement_generation_raw.json",
@@ -285,6 +321,7 @@ class BackendPipelineRunner:
             "storefront": context["storefront"],
             "app_id": context["app_id"],
             "analysis_goal": context["analysis_goal"],
+            "analysis_focus": _analysis_focus(context),
             "constraints": scope_validation.constraints if scope_validation.passed else normalize_constraints(context.get("constraints")),
             "scope_validation": scope_validation.to_dict(),
             "review_source": _review_source_label(context),
@@ -580,6 +617,7 @@ def _classification_summary() -> dict[str, Any]:
     ineligible = [item for item in eligibility.get("eligibility", []) if item.get("eligible_for_finding") is False]
     return {
         "classification_count": len(classification.get("classifications", [])),
+        "analysis_focus": eligibility.get("analysis_focus") or classification.get("analysis_focus"),
         "eligible_issue_count": len(eligible),
         "ineligible_issue_count": len(ineligible),
     }
@@ -592,6 +630,7 @@ def _finding_summary() -> dict[str, Any]:
     evidence = _load_json(ANALYSIS_DIR / "evidence_report.json").get("evidence_reports", [])
     return {
         "finding_count": len(findings),
+        "finding_type_counts": _count_by(findings, "finding_type"),
         "evidence_report_count": len(evidence),
         "validation": validation.get("status"),
         "provider": raw.get("provider"),
@@ -606,6 +645,7 @@ def _requirement_summary() -> dict[str, Any]:
     priority = _load_json(ANALYSIS_DIR / "priority_report.json").get("priority_report", [])
     return {
         "requirement_count": len(requirements),
+        "requirement_type_counts": _count_by(requirements, "requirement_type"),
         "priority_count": len(priority),
         "validation": validation.get("status"),
         "provider": raw.get("provider"),
@@ -651,6 +691,28 @@ def _test_case_summary() -> dict[str, Any]:
         "requirement_coverage": coverage.get("requirement_coverage"),
         "acceptance_criteria_coverage": coverage.get("acceptance_criteria_coverage"),
     }
+
+
+def _analysis_focus(context: dict[str, Any]) -> str:
+    return normalize_analysis_focus(context.get("analysis_focus") or DEFAULT_ANALYSIS_FOCUS)
+
+
+def _finding_stage_goal(context: dict[str, Any]) -> str:
+    focus = _analysis_focus(context)
+    if focus == ANALYSIS_FOCUS_POSITIVE_FEEDBACK:
+        return POSITIVE_FINDING_STAGE_GOAL
+    if focus == ANALYSIS_FOCUS_MIXED:
+        return MIXED_FINDING_STAGE_GOAL
+    return FINDING_STAGE_GOAL
+
+
+def _requirement_stage_goal(context: dict[str, Any]) -> str:
+    focus = _analysis_focus(context)
+    if focus == ANALYSIS_FOCUS_POSITIVE_FEEDBACK:
+        return POSITIVE_REQUIREMENT_STAGE_GOAL
+    if focus == ANALYSIS_FOCUS_MIXED:
+        return MIXED_REQUIREMENT_STAGE_GOAL
+    return REQUIREMENT_STAGE_GOAL
 
 
 def _traceability_summary(report: dict[str, Any]) -> dict[str, Any]:
@@ -736,6 +798,14 @@ def _scope_processing_summary(
 
 def _load_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _count_by(items: list[dict[str, Any]], key: str) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for item in items:
+        value = item.get(key) or "unspecified"
+        counts[str(value)] = counts.get(str(value), 0) + 1
+    return counts
 
 
 def _review_source_label(context: dict[str, Any]) -> str:

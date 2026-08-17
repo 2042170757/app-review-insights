@@ -58,6 +58,8 @@ Rules:
 17. Do not generate PRDs.
 18. Do not generate technical implementation plans.
 19. Do not generate Test Cases.
+20. For positive_feedback Requirements, Version goals and rationales must use preserve, maintain, or strengthen language rather than fix, reduce, or resolve problem language.
+21. Do not copy vague Requirement success metrics such as "remains high", "remains stable", or "maintain satisfaction" into Version success_metrics. If measurable metrics are not defined, use an empty success_metrics list.
 
 Return only JSON matching the required Roadmap schema."""
 
@@ -182,6 +184,7 @@ def build_roadmap_request(
         requirement_payload.append(
             {
                 "requirement_id": requirement_id,
+                "requirement_type": requirement.get("requirement_type") or "problem",
                 "title": requirement.get("title"),
                 "description": requirement.get("description"),
                 "finding_ids": finding_ids,
@@ -201,6 +204,7 @@ def build_roadmap_request(
             "validated_requirements": requirement_payload,
             "valid_requirement_ids": sorted(item["requirement_id"] for item in requirement_payload),
             "existing_dependencies_by_requirement_id": existing_dependencies_by_requirement_id,
+            "requirement_type_rule": "For positive_feedback Requirements, version goals and rationales must use preserve, maintain, or strengthen language rather than fix, reduce, or resolve problem language. Only include Version success_metrics that are measurable; otherwise use success_metrics: [].",
             "required_output_schema": {
                 "versions": [
                     {

@@ -32,6 +32,8 @@ class FindingSchemaTests(unittest.TestCase):
         self.assertEqual(FINDING_JSON_SCHEMA["required"], ["findings"])
         self.assertIn("support_count", schema["required"])
         self.assertIn("conflicting_review_ids", schema["required"])
+        self.assertNotIn("finding_type", schema["required"])
+        self.assertIn("finding_type", schema["properties"])
         self.assertEqual(schema["properties"]["confidence"]["minimum"], 0)
         self.assertEqual(schema["properties"]["confidence"]["maximum"], 1)
 

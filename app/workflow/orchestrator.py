@@ -9,6 +9,7 @@ from urllib.parse import urlparse
 from uuid import uuid4
 
 from app.demo import DEMO_RUN_ID_PREFIX, create_demo_run_state, load_demo_cache
+from app.analysis_intent import normalize_analysis_focus
 from app.analysis_scope import normalize_constraints
 from app.url_resolver import AppStoreUrlError, parse_app_store_url
 from app.imports import ImportedDataset
@@ -78,6 +79,7 @@ class WorkflowOrchestrator:
         *,
         app_url: str,
         analysis_goal: str | None = None,
+        analysis_focus: str | None = None,
         constraints: dict[str, Any] | None = None,
     ) -> RunState:
         validation = validate_app_store_url(app_url)
@@ -87,6 +89,7 @@ class WorkflowOrchestrator:
             run_id=str(uuid4()),
             app_url=app_url.strip(),
             analysis_goal=normalize_analysis_goal(analysis_goal),
+            analysis_focus=normalize_analysis_focus(analysis_focus),
             storefront=validation.storefront or "",
             app_id=validation.app_id or "",
             is_mock=False,
@@ -114,6 +117,7 @@ class WorkflowOrchestrator:
         app_url: str,
         analysis_goal: str | None,
         import_id: str,
+        analysis_focus: str | None = None,
         constraints: dict[str, Any] | None = None,
     ) -> RunState:
         dataset = self.get_import(import_id)
@@ -124,6 +128,7 @@ class WorkflowOrchestrator:
             run_id=str(uuid4()),
             app_url=app_url.strip(),
             analysis_goal=normalize_analysis_goal(analysis_goal),
+            analysis_focus=normalize_analysis_focus(analysis_focus),
             storefront=validation.storefront or "",
             app_id=validation.app_id or "",
             is_mock=False,
@@ -183,12 +188,18 @@ class WorkflowOrchestrator:
         *,
         app_url: str,
         analysis_goal: str | None = None,
+        analysis_focus: str | None = None,
         constraints: dict[str, Any] | None = None,
     ) -> RunState:
         with self._lock:
             if self._active_run_id:
                 raise WorkflowActiveRunError("已有分析任务正在运行")
-            run = self.create_run(app_url=app_url, analysis_goal=analysis_goal, constraints=constraints)
+            run = self.create_run(
+                app_url=app_url,
+                analysis_goal=analysis_goal,
+                analysis_focus=analysis_focus,
+                constraints=constraints,
+            )
             self._active_run_id = run.run_id
             run.status = RUN_RUNNING
             run.current_stage = _next_pending_stage(run)
@@ -203,6 +214,7 @@ class WorkflowOrchestrator:
         app_url: str,
         analysis_goal: str | None,
         import_id: str,
+        analysis_focus: str | None = None,
         constraints: dict[str, Any] | None = None,
     ) -> RunState:
         with self._lock:
@@ -211,6 +223,7 @@ class WorkflowOrchestrator:
             run = self.create_import_run(
                 app_url=app_url,
                 analysis_goal=analysis_goal,
+                analysis_focus=analysis_focus,
                 import_id=import_id,
                 constraints=constraints,
             )
@@ -433,6 +446,7 @@ class WorkflowOrchestrator:
             "run_id": run.run_id,
             "app_url": run.app_url,
             "analysis_goal": run.analysis_goal,
+            "analysis_focus": run.analysis_focus,
             "storefront": run.storefront or "",
             "app_id": run.app_id or "",
             "review_territory": "US",

@@ -2,8 +2,15 @@ import { useEffect, useMemo, useState } from 'react'
 
 const DEFAULT_APP_URL = 'https://apps.apple.com/us/app/workout-for-women-home-gym/id839285684'
 const DEFAULT_GOAL = '分析低评分用户对订阅和价格的主要问题'
+const DEFAULT_ANALYSIS_FOCUS = 'problem_analysis'
 const DEMO_APP_URL = DEFAULT_APP_URL
 const DEMO_GOAL = DEFAULT_GOAL
+const DEMO_ANALYSIS_FOCUS = DEFAULT_ANALYSIS_FOCUS
+const analysisFocusOptions = [
+  { value: 'problem_analysis', label: 'Product Problems' },
+  { value: 'positive_feedback_analysis', label: 'Positive Feedback' },
+  { value: 'mixed_analysis', label: 'Problems + Positive Feedback' },
+]
 const ratingConstraintOptions = [
   { value: 'all', label: 'All Ratings', constraints: {} },
   { value: '1-2', label: '1-2 Stars', constraints: { rating: { min: 1, max: 2 } } },
@@ -55,6 +62,7 @@ const tabs = [
 function App() {
   const [appUrl, setAppUrl] = useState(DEFAULT_APP_URL)
   const [analysisGoal, setAnalysisGoal] = useState(DEFAULT_GOAL)
+  const [analysisFocus, setAnalysisFocus] = useState(DEFAULT_ANALYSIS_FOCUS)
   const [ratingConstraint, setRatingConstraint] = useState('all')
   const [runMode, setRunMode] = useState('live')
   const [sourceType, setSourceType] = useState('app_store')
@@ -145,6 +153,7 @@ function App() {
       body: JSON.stringify({
         app_url: appUrl,
         analysis_goal: analysisGoal,
+        analysis_focus: analysisFocus,
         ...(Object.keys(constraints).length ? { constraints } : {}),
       }),
     })
@@ -162,6 +171,7 @@ function App() {
         import_id: importPreview.import_id,
         app_url: appUrl,
         analysis_goal: analysisGoal,
+        analysis_focus: analysisFocus,
         ...(Object.keys(constraints).length ? { constraints } : {}),
       }),
     })
@@ -183,6 +193,7 @@ function App() {
       setSourceType('app_store')
       setAppUrl(DEMO_APP_URL)
       setAnalysisGoal(DEMO_GOAL)
+      setAnalysisFocus(DEMO_ANALYSIS_FOCUS)
       setRatingConstraint('all')
     }
   }
@@ -294,6 +305,20 @@ function App() {
               placeholder="分析用户评论中的主要产品问题、用户体验问题和改进机会。"
               disabled={runMode === 'demo'}
             />
+          </label>
+          <label className="field focus-field">
+            <span>Analysis Focus</span>
+            <select
+              value={analysisFocus}
+              onChange={(event) => setAnalysisFocus(event.target.value)}
+              disabled={runMode === 'demo'}
+            >
+              {analysisFocusOptions.map((option) => (
+                <option value={option.value} key={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
           </label>
           <label className="field constraint-field">
             <span>Analysis Constraints</span>
@@ -601,6 +626,7 @@ function Overview({ results, runState }) {
         <TagRow labels={['Evidence', 'Deterministic', 'Model + Evidence', 'Uncertainty', 'Conflict']} />
         <dl className="definition-grid">
           <FragmentPair term="Analysis Goal" description={runState.analysis_goal} />
+          <FragmentPair term="Analysis Focus" description={analysisFocusLabel(metadata.analysis_focus || runState.analysis_focus)} />
           <FragmentPair term="Analysis Constraint" description={constraintLabel(scope.constraint || metadata.analysis_constraints || runState.constraints)} />
           <FragmentPair term="Average Rating" description={formatValue(stats.average_rating)} />
           <FragmentPair
@@ -814,6 +840,7 @@ function Findings({ results, lookup, setSelectedEntity }) {
                 {finding.finding_id}
               </button>
               <Confidence value={finding.confidence} />
+              <span className={`type-badge ${finding.finding_type || 'product_problem'}`}>{finding.finding_type || 'product_problem'}</span>
             </header>
             <h3>{finding.title || finding.name}</h3>
             <p>{finding.statement || finding.description}</p>
@@ -864,6 +891,7 @@ function Requirements({ results, setSelectedEntity }) {
               {requirement.requirement_id}
             </button>
             <span className="priority-badge">{requirement.priority || requirement.final_priority || 'priority unknown'}</span>
+            <span className={`type-badge ${requirement.requirement_type || 'problem'}`}>{requirement.requirement_type || 'problem'}</span>
           </header>
           <h3>{requirement.title || requirement.name}</h3>
           <p>{requirement.description}</p>
@@ -1113,6 +1141,7 @@ function DiagnosticsTab({ results, runState }) {
           <FragmentPair term="Data Source" description={metadata.data?.display_source || metadata.data?.provider || 'unknown'} />
           <FragmentPair term="Review Source" description={metadata.data?.review_source || metadata.data?.display_source || 'unknown'} />
           <FragmentPair term="App Context" description={metadata.data?.app_context || runState.app_url || 'unknown'} />
+          <FragmentPair term="Analysis Focus" description={analysisFocusLabel(metadata.data?.analysis_focus || runState.analysis_focus)} />
           <FragmentPair term="Filename" description={metadata.data?.filename || 'none'} />
           <FragmentPair term="Territory" description={metadata.data?.territory || 'Unknown / Not provided'} />
           <FragmentPair term="App ID" description={metadata.data?.app_id || runState.app_id || 'unknown'} />
@@ -1664,6 +1693,11 @@ function constraintLabel(value) {
   const max = rating.max
   if (min === undefined || max === undefined) return formatValue(value)
   return `${min}-${max} Stars`
+}
+
+function analysisFocusLabel(value) {
+  const option = analysisFocusOptions.find((item) => item.value === value)
+  return option?.label || value || 'Product Problems'
 }
 
 function formatAcceptanceCriteria(items) {

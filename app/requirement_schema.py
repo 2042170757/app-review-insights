@@ -7,6 +7,14 @@ from typing import Any
 
 
 VALID_PRIORITIES = {"P0", "P1", "P2", "P3"}
+REQUIREMENT_TYPE_PROBLEM = "problem"
+REQUIREMENT_TYPE_POSITIVE_FEEDBACK = "positive_feedback"
+REQUIREMENT_TYPE_MIXED = "mixed"
+VALID_REQUIREMENT_TYPES = {
+    REQUIREMENT_TYPE_PROBLEM,
+    REQUIREMENT_TYPE_POSITIVE_FEEDBACK,
+    REQUIREMENT_TYPE_MIXED,
+}
 
 
 @dataclass(frozen=True)
@@ -22,6 +30,7 @@ class Requirement:
     success_metrics: list[str]
     uncertainty: str
     source_review_ids: list[str] | None = None
+    requirement_type: str = REQUIREMENT_TYPE_PROBLEM
 
 
 @dataclass(frozen=True)
@@ -53,6 +62,10 @@ REQUIREMENT_JSON_SCHEMA: dict[str, Any] = {
                 ],
                 "properties": {
                     "requirement_id": {"type": "string", "minLength": 1},
+                    "requirement_type": {
+                        "type": "string",
+                        "enum": sorted(VALID_REQUIREMENT_TYPES),
+                    },
                     "finding_ids": {
                         "type": "array",
                         "minItems": 1,

@@ -23,6 +23,7 @@ from app.workflow.orchestrator import (
 class CreateRunRequest(BaseModel):
     app_url: str
     analysis_goal: str | None = None
+    analysis_focus: str | None = None
     constraints: dict[str, Any] | None = None
 
 
@@ -30,6 +31,7 @@ class CreateImportRunRequest(BaseModel):
     import_id: str
     app_url: str
     analysis_goal: str | None = None
+    analysis_focus: str | None = None
     constraints: dict[str, Any] | None = None
 
 
@@ -55,6 +57,7 @@ def create_app(orchestrator: WorkflowOrchestrator | None = None) -> FastAPI:
             run = workflow.create_and_start_run_async(
                 app_url=request.app_url,
                 analysis_goal=request.analysis_goal,
+                analysis_focus=request.analysis_focus,
                 constraints=request.constraints,
             )
         except WorkflowInputError as exc:
@@ -69,6 +72,7 @@ def create_app(orchestrator: WorkflowOrchestrator | None = None) -> FastAPI:
             run = workflow.create_and_start_import_run_async(
                 app_url=request.app_url,
                 analysis_goal=request.analysis_goal,
+                analysis_focus=request.analysis_focus,
                 import_id=request.import_id,
                 constraints=request.constraints,
             )

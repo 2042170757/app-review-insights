@@ -9,6 +9,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from app.analysis_intent import DEFAULT_ANALYSIS_FOCUS, normalize_analysis_focus
 from app.issue_consolidation import DEFAULT_ANALYSIS_DIR
 from app.llm.base import MissingAPIKeyError, ModelRequestError
 from app.llm.deepseek_provider import DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL
@@ -35,11 +36,19 @@ def main() -> int:
     parser.add_argument("--evidence-report", type=Path, default=DEFAULT_EVIDENCE_REPORT_PATH)
     parser.add_argument("--provider", choices=["mock", "deepseek"], default="mock")
     parser.add_argument("--goal", default=DEFAULT_REQUIREMENT_GOAL)
+    parser.add_argument("--analysis-focus", default=DEFAULT_ANALYSIS_FOCUS)
     parser.add_argument("--mock-output", type=Path)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_ANALYSIS_DIR)
     args = parser.parse_args()
 
     load_dotenv(override=False)
+    try:
+        analysis_focus = normalize_analysis_focus(args.analysis_focus)
+    except ValueError as exc:
+        print("Requirement Generation: FAIL")
+        print("Failure Type: Invalid Analysis Focus")
+        print(f"Message: {exc}")
+        return 1
     findings = load_findings(args.findings)
     finding_validation = load_finding_validation(args.finding_validation)
     evidence_report = load_evidence_report(args.evidence_report)
@@ -57,6 +66,7 @@ def main() -> int:
             evidence_report=evidence_report,
             provider=provider,
             analysis_goal=args.goal,
+            analysis_focus=analysis_focus,
             output_dir=args.output_dir,
             is_mock=True,
         )
@@ -76,6 +86,7 @@ def main() -> int:
                 provider_info,
                 False,
                 len(findings),
+                analysis_focus=analysis_focus,
             )
         else:
             result = generate_requirements(
@@ -84,6 +95,7 @@ def main() -> int:
                 evidence_report=evidence_report,
                 provider=provider,
                 analysis_goal=args.goal,
+                analysis_focus=analysis_focus,
                 output_dir=args.output_dir,
                 is_mock=False,
             )
@@ -95,11 +107,13 @@ def main() -> int:
         print(f"Failure Type: {result.generation_status}")
     print(f"Provider: {result.provider}")
     print(f"Model: {result.model}")
+    print(f"Analysis Focus: {result.analysis_focus}")
     print(f"Requirement Count: {len(result.requirements)}")
     print(f"Input Findings: {result.input_finding_count}")
     print(f"Validation: {'PASS' if result.validation.passed else result.validation.status}")
     for requirement in result.requirements:
         print(f"requirement_id: {requirement['requirement_id']}")
+        print(f"requirement_type: {requirement.get('requirement_type', 'problem')}")
         print(f"title: {requirement['title']}")
         print(f"finding_count: {len(requirement['finding_ids'])}")
         print(f"priority: {requirement['priority']}")
@@ -142,6 +156,7 @@ def build_default_mock_output(findings: list[dict]) -> str:
         return json.dumps({"requirements": []})
     requirement = {
         "requirement_id": "REQ-001",
+        "requirement_type": "positive_feedback" if finding.get("finding_type") == "positive_feedback" else "problem",
         "finding_ids": [finding["finding_id"]],
         "title": f"Address {finding.get('title', 'validated finding')}",
         "description": f"Define a product behavior that addresses the validated finding: {finding.get('statement', '')}",

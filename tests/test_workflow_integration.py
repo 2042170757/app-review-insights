@@ -55,6 +55,21 @@ class WorkflowIntegrationTests(unittest.TestCase):
         self.assertEqual(result.stages[0].summary["constraints"], {"rating": {"min": 1, "max": 2}})
         self.assertTrue(all(context["constraints"] == {"rating": {"min": 1, "max": 2}} for context in runner.contexts))
 
+    def test_analysis_focus_is_stored_and_passed_to_workflow_context(self) -> None:
+        runner = RecordingRunner()
+        orchestrator = WorkflowOrchestrator(pipeline_runner=runner)
+        run = orchestrator.create_run(
+            app_url=VALID_URL,
+            analysis_goal="Goal",
+            analysis_focus="positive_feedback",
+        )
+
+        result = orchestrator.run_pipeline_sync(run.run_id)
+
+        self.assertEqual(result.analysis_focus, "positive_feedback_analysis")
+        self.assertEqual(result.stages[0].summary["analysis_focus"], "positive_feedback_analysis")
+        self.assertTrue(all(context["analysis_focus"] == "positive_feedback_analysis" for context in runner.contexts))
+
 
 class RecordingRunner:
     def __init__(self) -> None:
@@ -70,6 +85,7 @@ class RecordingRunner:
                 "storefront": context["storefront"],
                 "app_id": context["app_id"],
                 "analysis_goal": context["analysis_goal"],
+                "analysis_focus": context["analysis_focus"],
                 "constraints": context.get("constraints", {}),
                 "review_source": "apify",
                 "review_territory": "US",

@@ -537,7 +537,27 @@ def _domain_tokens(value: str) -> set[str]:
     words = set(re.findall(r"[a-z0-9]+", value.lower()))
     domains = {
         "subscription": {"subscription", "billing", "paywall", "free", "premium", "cancellation", "price"},
-        "content": {"workout", "content", "imagery", "customization", "freshness", "library"},
+        "content": {
+            "workout",
+            "workouts",
+            "exercise",
+            "exercises",
+            "content",
+            "imagery",
+            "customization",
+            "freshness",
+            "library",
+            "health",
+            "fitness",
+            "effective",
+            "effectiveness",
+            "motivation",
+            "motivated",
+            "results",
+            "routine",
+            "instructions",
+            "variety",
+        },
         "support": {"support", "ads", "advertising", "redirects", "trust"},
     }
     matched: set[str] = set()

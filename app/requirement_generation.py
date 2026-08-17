@@ -8,6 +8,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from app.analysis_intent import (
+    ANALYSIS_FOCUS_MIXED,
+    ANALYSIS_FOCUS_POSITIVE_FEEDBACK,
+    DEFAULT_ANALYSIS_FOCUS,
+    focus_label,
+    normalize_analysis_focus,
+)
 from app.issue_consolidation import DEFAULT_ANALYSIS_DIR
 from app.llm.base import (
     LLMProvider,
@@ -52,6 +59,7 @@ Rules:
 17. If a Finding does not support a clear Requirement, omit it.
 18. Never use these prohibited words or substrings anywhere in a Requirement: function, functions, functionality, functional, API, endpoint, database, code, class, component, React, Vue.
 19. Use product-behavior wording instead: write "working close button" instead of "functional close button", "exercise catalog" instead of "exercise database", and "product behavior" or "capability" instead of "functionality".
+20. Success metrics must be observable and measurable. Do not use vague preservation metrics such as "remains high", "remains stable", or "maintain satisfaction" unless the input defines the measurement. Use an empty success_metrics list when reliable measurement is not supported.
 
 Return only JSON matching the required Requirement schema."""
 
@@ -69,6 +77,7 @@ class RequirementGenerationResult:
     analysis_goal: str
     input_finding_count: int
     saved_paths: dict[str, str]
+    analysis_focus: str = DEFAULT_ANALYSIS_FOCUS
     error: str | None = None
     extracted_json: str | None = None
     normalized_json: str | None = None
@@ -84,9 +93,11 @@ def generate_requirements(
     evidence_report: dict[str, Any],
     provider: LLMProvider,
     analysis_goal: str = DEFAULT_REQUIREMENT_GOAL,
+    analysis_focus: str = DEFAULT_ANALYSIS_FOCUS,
     output_dir: Path = DEFAULT_ANALYSIS_DIR,
     is_mock: bool = False,
 ) -> RequirementGenerationResult:
+    analysis_focus = normalize_analysis_focus(analysis_focus)
     finding_validation_passed = _finding_validation_passed(finding_validation)
     findings_by_id = _findings_by_id(findings)
     eligible_finding_ids = set(findings_by_id)
@@ -99,6 +110,7 @@ def generate_requirements(
             provider,
             is_mock,
             len(findings_by_id),
+            analysis_focus=analysis_focus,
         )
     if not findings_by_id:
         return create_failure_result(
@@ -109,25 +121,27 @@ def generate_requirements(
             provider,
             is_mock,
             0,
+            analysis_focus=analysis_focus,
         )
 
     request = build_requirement_request(
         findings=findings,
         evidence_report=evidence_report,
         analysis_goal=analysis_goal,
+        analysis_focus=analysis_focus,
     )
     try:
         response = provider.generate(request)
     except MissingAPIKeyError as exc:
-        return create_failure_result("Missing API Key", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id))
+        return create_failure_result("Missing API Key", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus)
     except ModelAuthenticationError as exc:
-        return create_failure_result("Authentication Error", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id))
+        return create_failure_result("Authentication Error", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus)
     except ModelRateLimitError as exc:
-        return create_failure_result("Rate Limit", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id))
+        return create_failure_result("Rate Limit", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus)
     except ModelTimeoutError as exc:
-        return create_failure_result("Timeout", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id))
+        return create_failure_result("Timeout", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus)
     except ModelRequestError as exc:
-        return create_failure_result("Model Request Error", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id))
+        return create_failure_result("Model Request Error", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus)
 
     recovery = parse_json_response(response.raw_text)
     if not recovery.success:
@@ -140,6 +154,7 @@ def generate_requirements(
             raw_output=response.raw_text,
             response_metadata=response.metadata,
             json_recovery=recovery,
+            analysis_focus=analysis_focus,
         )
         save_requirement_outputs(result, output_dir=output_dir)
         return result
@@ -171,6 +186,7 @@ def generate_requirements(
         analysis_goal=analysis_goal,
         input_finding_count=len(findings_by_id),
         saved_paths={},
+        analysis_focus=analysis_focus,
         extracted_json=extracted_json,
         normalized_json=normalized_json,
         json_recovery=recovery.metadata(),
@@ -186,7 +202,9 @@ def build_requirement_request(
     findings: list[dict[str, Any]],
     evidence_report: dict[str, Any],
     analysis_goal: str,
+    analysis_focus: str = DEFAULT_ANALYSIS_FOCUS,
 ) -> LLMRequest:
+    analysis_focus = normalize_analysis_focus(analysis_focus)
     evidence_reports_by_id = _evidence_reports_by_id(evidence_report)
     finding_payload = []
     for finding in findings:
@@ -196,6 +214,7 @@ def build_requirement_request(
         finding_payload.append(
             {
                 "finding_id": finding_id,
+                "finding_type": finding.get("finding_type") or "product_problem",
                 "issue_ids": finding.get("issue_ids"),
                 "review_ids": finding.get("review_ids"),
                 "title": finding.get("title"),
@@ -211,12 +230,15 @@ def build_requirement_request(
     user_prompt = json.dumps(
         {
             "analysis_goal": analysis_goal,
+            "analysis_focus": analysis_focus,
+            "analysis_focus_label": focus_label(analysis_focus),
             "validated_findings": finding_payload,
             "valid_finding_ids": sorted(item["finding_id"] for item in finding_payload),
             "required_output_schema": {
                 "requirements": [
                     {
                         "requirement_id": "REQ-001",
+                        "requirement_type": "problem",
                         "finding_ids": ["FINDING-001"],
                         "title": "string",
                         "description": "string",
@@ -231,6 +253,8 @@ def build_requirement_request(
                 ]
             },
             "priority_note": "Model priority is advisory only; deterministic priority engine will assign final priority.",
+            "allowed_requirement_types": ["problem", "positive_feedback", "mixed"],
+            "requirement_type_rule": _requirement_type_rule(analysis_focus),
             "prohibited_word_rule": {
                 "terms": [
                     "function",
@@ -252,7 +276,39 @@ def build_requirement_request(
         ensure_ascii=False,
         indent=2,
     )
-    return LLMRequest(system_prompt=SYSTEM_PROMPT, user_prompt=user_prompt, analysis_goal=analysis_goal)
+    return LLMRequest(system_prompt=_system_prompt_for_focus(analysis_focus), user_prompt=user_prompt, analysis_goal=analysis_goal)
+
+
+def _system_prompt_for_focus(analysis_focus: str) -> str:
+    focus = normalize_analysis_focus(analysis_focus)
+    if focus == ANALYSIS_FOCUS_POSITIVE_FEEDBACK:
+        return (
+            SYSTEM_PROMPT
+            + "\n\nPositive feedback focus:\n"
+            "21. Generate only preservation Requirements for positive_feedback Findings when the evidence supports an actionable product behavior to preserve or strengthen.\n"
+            "22. requirement_type must be positive_feedback for generated Requirements.\n"
+            "23. Do not frame valued experiences as problems, defects, or unmet needs.\n"
+            "24. Prefer success_metrics: [] for preservation Requirements unless the input evidence defines a measurable metric.\n"
+            "25. If no actionable preservation Requirement is supported, return {\"requirements\": []}.\n"
+        )
+    if focus == ANALYSIS_FOCUS_MIXED:
+        return (
+            SYSTEM_PROMPT
+            + "\n\nMixed focus:\n"
+            "21. Generate problem Requirements for product_problem Findings and preservation Requirements for positive_feedback Findings.\n"
+            "22. Set requirement_type to problem, positive_feedback, or mixed according to the referenced Findings.\n"
+            "23. Do not convert positive feedback into fake problems or let problem evidence overwrite positive evidence.\n"
+        )
+    return SYSTEM_PROMPT + "\n\nProblem focus:\n21. requirement_type must be problem for generated Requirements.\n"
+
+
+def _requirement_type_rule(analysis_focus: str) -> str:
+    focus = normalize_analysis_focus(analysis_focus)
+    if focus == ANALYSIS_FOCUS_POSITIVE_FEEDBACK:
+        return "Use requirement_type=positive_feedback. Generate preservation requirements only; if findings are not actionable, return an empty requirements list. Use success_metrics: [] unless the evidence provides a concrete measurable metric definition."
+    if focus == ANALYSIS_FOCUS_MIXED:
+        return "Use requirement_type=problem for product_problem findings, positive_feedback for positive_feedback findings, and mixed only when a requirement explicitly references both types."
+    return "Use requirement_type=problem. Positive feedback findings are outside the default problem-analysis scope."
 
 
 def create_failure_result(
@@ -263,6 +319,7 @@ def create_failure_result(
     provider: LLMProvider,
     is_mock: bool,
     input_finding_count: int,
+    analysis_focus: str = DEFAULT_ANALYSIS_FOCUS,
 ) -> RequirementGenerationResult:
     validation = RequirementValidationResult(status="SKIPPED", passed=False, errors=[error])
     result = RequirementGenerationResult(
@@ -277,6 +334,7 @@ def create_failure_result(
         analysis_goal=analysis_goal,
         input_finding_count=input_finding_count,
         saved_paths={},
+        analysis_focus=normalize_analysis_focus(analysis_focus),
         error=error,
         is_mock=is_mock,
     )
@@ -294,6 +352,7 @@ def create_invalid_json_result(
     raw_output: str,
     response_metadata: dict[str, Any] | None,
     json_recovery: JSONRecoveryResult,
+    analysis_focus: str = DEFAULT_ANALYSIS_FOCUS,
 ) -> RequirementGenerationResult:
     error = json_recovery.error or "Invalid JSON"
     validation = RequirementValidationResult(status="SKIPPED", passed=False, errors=[error])
@@ -309,6 +368,7 @@ def create_invalid_json_result(
         analysis_goal=analysis_goal,
         input_finding_count=input_finding_count,
         saved_paths={},
+        analysis_focus=normalize_analysis_focus(analysis_focus),
         error=error,
         extracted_json=json_recovery.extracted_response or None,
         normalized_json=None,
@@ -336,6 +396,7 @@ def save_requirement_outputs(
                 "model": result.model,
                 "is_mock": result.is_mock,
                 "analysis_goal": result.analysis_goal,
+                "analysis_focus": result.analysis_focus,
                 "generation_status": result.generation_status,
                 "raw_output": result.raw_output,
                 "raw_response": result.raw_output,

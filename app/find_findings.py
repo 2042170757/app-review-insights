@@ -11,6 +11,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from app.analysis_intent import DEFAULT_ANALYSIS_FOCUS, normalize_analysis_focus
 from app.finding_generation import (
     DEFAULT_FINDING_GOAL,
     build_finding_request,
@@ -39,11 +40,19 @@ def main() -> int:
     parser.add_argument("--eligibility", type=Path, default=DEFAULT_ELIGIBILITY_PATH)
     parser.add_argument("--provider", choices=["mock", "deepseek"], default="mock")
     parser.add_argument("--goal", default=DEFAULT_FINDING_GOAL)
+    parser.add_argument("--analysis-focus", default=DEFAULT_ANALYSIS_FOCUS)
     parser.add_argument("--mock-output", type=Path)
     parser.add_argument("--output-dir", type=Path, default=DEFAULT_ANALYSIS_DIR)
     args = parser.parse_args()
 
     load_dotenv(override=False)
+    try:
+        analysis_focus = normalize_analysis_focus(args.analysis_focus)
+    except ValueError as exc:
+        print("Finding Generation: FAIL")
+        print("Failure Type: Invalid Analysis Focus")
+        print(f"Message: {exc}")
+        return 1
     reviews = load_reviews(args.reviews)
     issues = load_issues(args.issues)
     classifications = load_classifications(args.classification)
@@ -62,6 +71,7 @@ def main() -> int:
             eligibility=eligibility,
             provider=provider,
             analysis_goal=args.goal,
+            analysis_focus=analysis_focus,
             output_dir=args.output_dir,
             is_mock=True,
         )
@@ -84,6 +94,7 @@ def main() -> int:
                 provider_info,
                 False,
                 eligible_issue_count,
+                analysis_focus=analysis_focus,
             )
         else:
             result = generate_findings(
@@ -93,6 +104,7 @@ def main() -> int:
                 eligibility=eligibility,
                 provider=provider,
                 analysis_goal=args.goal,
+                analysis_focus=analysis_focus,
                 output_dir=args.output_dir,
                 is_mock=False,
             )
@@ -104,6 +116,7 @@ def main() -> int:
         print(f"Failure Type: {result.generation_status}")
     print(f"Provider: {result.provider}")
     print(f"Model: {result.model}")
+    print(f"Analysis Focus: {result.analysis_focus}")
     print(f"Finding Count: {len(result.findings)}")
     print(f"Eligibility Checked: {result.eligible_issue_count}")
     print(f"Validation: {'PASS' if result.validation.passed else result.validation.status}")
@@ -111,6 +124,7 @@ def main() -> int:
     for finding in result.findings:
         report = evidence_by_id.get(finding["finding_id"], {})
         print(f"finding_id: {finding['finding_id']}")
+        print(f"finding_type: {finding.get('finding_type', 'product_problem')}")
         print(f"title: {finding['title']}")
         print(f"issue_count: {len(finding['issue_ids'])}")
         print(f"review_count: {len(finding['review_ids'])}")
@@ -170,6 +184,14 @@ def build_default_mock_output(issues: list[dict], eligibility: list[dict]) -> st
     support_count = len(review_ids)
     finding = {
         "finding_id": "FINDING-001",
+        "finding_type": next(
+            (
+                item.get("finding_type")
+                for item in eligibility
+                if item.get("issue_id") == issue.get("issue_id") and item.get("finding_type")
+            ),
+            "product_problem",
+        ),
         "issue_ids": [issue["issue_id"]],
         "review_ids": review_ids,
         "title": issue.get("name", "Mock finding"),

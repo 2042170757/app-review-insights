@@ -6,7 +6,12 @@ import json
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
-from app.requirement_schema import Requirement, VALID_PRIORITIES
+from app.requirement_schema import (
+    REQUIREMENT_TYPE_PROBLEM,
+    Requirement,
+    VALID_PRIORITIES,
+    VALID_REQUIREMENT_TYPES,
+)
 
 
 STATUS_SUCCESS = "Success"
@@ -113,6 +118,7 @@ def validate_requirement_payload(
             continue
 
         requirement_id = _text(raw_requirement.get("requirement_id"))
+        requirement_type = _text(raw_requirement.get("requirement_type")) or REQUIREMENT_TYPE_PROBLEM
         finding_ids = _normalize_id_list(raw_requirement.get("finding_ids"), f"{prefix}.finding_ids", errors)
         title = _text(raw_requirement.get("title"))
         description = _text(raw_requirement.get("description"))
@@ -142,6 +148,8 @@ def validate_requirement_payload(
             seen_requirement_ids.add(requirement_id)
         if not title:
             errors.append(f"{prefix}.title: required")
+        if requirement_type not in VALID_REQUIREMENT_TYPES:
+            errors.append(f"{prefix}.requirement_type: invalid {requirement_type!r}")
         if not description:
             errors.append(f"{prefix}.description: required")
         if not priority_rationale:
@@ -191,6 +199,7 @@ def validate_requirement_payload(
 
         if (
             requirement_id
+            and requirement_type in VALID_REQUIREMENT_TYPES
             and finding_ids
             and title
             and description
@@ -204,6 +213,7 @@ def validate_requirement_payload(
             requirements.append(
                 Requirement(
                     requirement_id=requirement_id,
+                    requirement_type=requirement_type,
                     finding_ids=finding_ids,
                     title=title,
                     description=description,

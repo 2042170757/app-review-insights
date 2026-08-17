@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from app.analysis_intent import DEFAULT_ANALYSIS_FOCUS, focus_label, normalize_analysis_focus
 from app.issue_schema import Issue
 from app.issue_validator import IssueValidationResult, validate_issue_output
 from app.llm.base import (
@@ -68,6 +69,7 @@ class IssueConsolidationResult:
     unmerged_topic_ids: list[str]
     saved_paths: dict[str, str]
     analysis_goal: str
+    analysis_focus: str = DEFAULT_ANALYSIS_FOCUS
     error: str | None = None
     extracted_json: str | None = None
     response_metadata: dict[str, Any] | None = None
@@ -84,22 +86,24 @@ def consolidate_issues(
     *,
     provider: LLMProvider,
     analysis_goal: str = DEFAULT_ISSUE_GOAL,
+    analysis_focus: str = DEFAULT_ANALYSIS_FOCUS,
     output_dir: Path = DEFAULT_ANALYSIS_DIR,
     is_mock: bool = False,
 ) -> IssueConsolidationResult:
-    request = build_issue_request(reviews, topics, analysis_goal=analysis_goal)
+    analysis_focus = normalize_analysis_focus(analysis_focus)
+    request = build_issue_request(reviews, topics, analysis_goal=analysis_goal, analysis_focus=analysis_focus)
     try:
         response = provider.generate(request)
     except MissingAPIKeyError as exc:
-        return create_provider_failure_result("Missing API Key", analysis_goal, str(exc), output_dir, provider, is_mock)
+        return create_provider_failure_result("Missing API Key", analysis_goal, str(exc), output_dir, provider, is_mock, analysis_focus=analysis_focus)
     except ModelAuthenticationError as exc:
-        return create_provider_failure_result("Authentication Error", analysis_goal, str(exc), output_dir, provider, is_mock)
+        return create_provider_failure_result("Authentication Error", analysis_goal, str(exc), output_dir, provider, is_mock, analysis_focus=analysis_focus)
     except ModelRateLimitError as exc:
-        return create_provider_failure_result("Rate Limit", analysis_goal, str(exc), output_dir, provider, is_mock)
+        return create_provider_failure_result("Rate Limit", analysis_goal, str(exc), output_dir, provider, is_mock, analysis_focus=analysis_focus)
     except ModelTimeoutError as exc:
-        return create_provider_failure_result("Timeout", analysis_goal, str(exc), output_dir, provider, is_mock)
+        return create_provider_failure_result("Timeout", analysis_goal, str(exc), output_dir, provider, is_mock, analysis_focus=analysis_focus)
     except ModelRequestError as exc:
-        return create_provider_failure_result("Model Request Error", analysis_goal, str(exc), output_dir, provider, is_mock)
+        return create_provider_failure_result("Model Request Error", analysis_goal, str(exc), output_dir, provider, is_mock, analysis_focus=analysis_focus)
 
     topic_ids, review_ids, topic_review_ids = build_validation_context(reviews, topics)
     extracted_json = extract_json_text(response.raw_text)
@@ -121,6 +125,7 @@ def consolidate_issues(
         unmerged_topic_ids=unmerged_topic_ids,
         saved_paths={},
         analysis_goal=analysis_goal,
+        analysis_focus=analysis_focus,
         extracted_json=extracted_json,
         response_metadata=response.metadata,
         is_mock=is_mock,
@@ -134,7 +139,9 @@ def build_issue_request(
     topics: list[dict[str, Any]],
     *,
     analysis_goal: str = DEFAULT_ISSUE_GOAL,
+    analysis_focus: str = DEFAULT_ANALYSIS_FOCUS,
 ) -> LLMRequest:
+    analysis_focus = normalize_analysis_focus(analysis_focus)
     reviews_by_id = {_text(review.get("id")): review for review in reviews if _text(review.get("id"))}
     topic_payload = [
         {
@@ -151,6 +158,8 @@ def build_issue_request(
     user_prompt = json.dumps(
         {
             "analysis_goal": analysis_goal,
+            "analysis_focus": analysis_focus,
+            "analysis_focus_label": focus_label(analysis_focus),
             "topics": topic_payload,
             "valid_topic_ids": [_text(topic.get("topic_id")) for topic in topics if _text(topic.get("topic_id"))],
             "valid_review_ids": sorted(reviews_by_id.keys()),
@@ -170,6 +179,10 @@ def build_issue_request(
                 "unmerged_topic_ids": ["TOPIC-002"],
             },
             "traceability_rule": "Every valid_topic_id must appear in at least one issue.topic_ids entry. Use single-Topic Issues for distinct, positive, neutral, or non-problem Topics so later deterministic classification can preserve or filter them. Leave unmerged_topic_ids empty unless a Topic cannot be represented with valid Review Evidence.",
+            "focus_rule": (
+                "Consolidate only within the selected analysis_focus. In positive_feedback_analysis, preserve valued experiences as positive-feedback Issues without converting them into user problems. "
+                "In mixed_analysis, preserve problem Issues and positive-feedback Issues as distinct Issue evidence when they describe different underlying user intent."
+            ),
         },
         ensure_ascii=False,
         indent=2,
@@ -257,6 +270,7 @@ def save_issue_outputs(
         "provider": result.provider,
         "model": result.model,
         "analysis_goal": result.analysis_goal,
+        "analysis_focus": result.analysis_focus,
         "status": result.status,
         "raw_output": result.raw_output,
         "extracted_json": result.extracted_json,
@@ -290,6 +304,7 @@ def create_failure_result(
     provider: str | None = None,
     model: str | None = None,
     is_mock: bool = False,
+    analysis_focus: str = DEFAULT_ANALYSIS_FOCUS,
 ) -> IssueConsolidationResult:
     validation = IssueValidationResult(status="SKIPPED", passed=False, errors=[error])
     result = IssueConsolidationResult(
@@ -302,6 +317,7 @@ def create_failure_result(
         unmerged_topic_ids=[],
         saved_paths={},
         analysis_goal=analysis_goal,
+        analysis_focus=normalize_analysis_focus(analysis_focus),
         error=error,
         is_mock=is_mock,
     )
@@ -316,6 +332,7 @@ def create_provider_failure_result(
     output_dir: Path,
     provider: LLMProvider,
     is_mock: bool,
+    analysis_focus: str = DEFAULT_ANALYSIS_FOCUS,
 ) -> IssueConsolidationResult:
     return create_failure_result(
         status,
@@ -325,6 +342,7 @@ def create_provider_failure_result(
         provider=getattr(provider, "provider_name", None),
         model=getattr(provider, "model", None),
         is_mock=is_mock,
+        analysis_focus=analysis_focus,
     )
 
 

@@ -6,6 +6,7 @@ from dataclasses import asdict, dataclass, field
 from datetime import UTC, datetime
 from typing import Any
 
+from app.analysis_intent import DEFAULT_ANALYSIS_FOCUS, normalize_analysis_focus
 from app.workflow.stages import (
     ERROR_UNKNOWN,
     RUN_QUEUED,
@@ -107,6 +108,7 @@ class RunState:
     app_url: str
     analysis_goal: str
     stages: list[WorkflowStageState]
+    analysis_focus: str = DEFAULT_ANALYSIS_FOCUS
     errors: list[WorkflowError] = field(default_factory=list)
     warnings: list[WorkflowWarning] = field(default_factory=list)
     revisions: list[WorkflowRevision] = field(default_factory=list)
@@ -133,6 +135,7 @@ class RunState:
                 raise ValueError(f"Invalid stage status: {stage.status}")
         self.progress = calculate_progress(self.stages)
         self.analysis_goal = normalize_analysis_goal(self.analysis_goal)
+        self.analysis_focus = normalize_analysis_focus(self.analysis_focus)
 
     def touch(self) -> None:
         self.updated_at = now_utc()
@@ -179,6 +182,7 @@ def new_run_state(
     analysis_goal: str | None,
     storefront: str,
     app_id: str,
+    analysis_focus: str | None = DEFAULT_ANALYSIS_FOCUS,
     is_mock: bool = True,
     source_type: str = "app_store",
     data_source: str | None = None,
@@ -195,6 +199,7 @@ def new_run_state(
         progress=0.0,
         app_url=app_url,
         analysis_goal=normalize_analysis_goal(analysis_goal),
+        analysis_focus=normalize_analysis_focus(analysis_focus),
         stages=initialize_stage_states(),
         created_at=timestamp,
         updated_at=timestamp,

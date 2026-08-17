@@ -23,6 +23,20 @@ class RequirementValidatorTests(unittest.TestCase):
         self.assertTrue(result.passed)
         self.assertEqual(result.status, STATUS_SUCCESS)
         self.assertEqual(result.requirements[0].requirement_id, "REQ-001")
+        self.assertEqual(result.requirements[0].requirement_type, "problem")
+
+    def test_valid_positive_feedback_requirement_type(self) -> None:
+        result = _validate(_payload(requirement_type="positive_feedback"))
+
+        self.assertTrue(result.passed)
+        self.assertEqual(result.status, STATUS_SUCCESS)
+        self.assertEqual(result.requirements[0].requirement_type, "positive_feedback")
+
+    def test_invalid_requirement_type(self) -> None:
+        result = _validate(_payload(requirement_type="unknown"))
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_SCHEMA_VALIDATION_FAILED)
 
     def test_invalid_json(self) -> None:
         result = _validate_raw("{not json")
@@ -186,6 +200,7 @@ def _payload(**overrides) -> dict:
 def _requirement(**overrides) -> dict:
     requirement = {
         "requirement_id": "REQ-001",
+        "requirement_type": "problem",
         "finding_ids": ["FINDING-001"],
         "title": "Clarify subscription terms",
         "description": "Users need subscription cost, renewal, and access limits explained before commitment.",

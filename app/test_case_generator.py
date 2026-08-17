@@ -193,6 +193,7 @@ def build_test_case_request(
         requirement_payload.append(
             {
                 "requirement_id": requirement_id,
+                "requirement_type": requirement.get("requirement_type") or "problem",
                 "title": requirement.get("title"),
                 "description": requirement.get("description"),
                 "priority": requirement.get("priority"),
@@ -207,6 +208,7 @@ def build_test_case_request(
             "acceptance_criteria_index": acceptance_criteria_index,
             "roadmap_versions": roadmap.get("versions", []) if isinstance(roadmap, dict) else [],
             "coverage_requirement": "Cover every input requirement_id and every input acceptance_criteria_id at least once.",
+            "requirement_type_rule": "For positive_feedback Requirements, verify preservation of the valued experience. Do not write tests as if the positive feedback were a defect complaint.",
             "recommended_output_size": "Prefer one concise Test Case per Requirement covering all of that Requirement's Acceptance Criteria when executable.",
             "required_output_schema": {
                 "test_cases": [

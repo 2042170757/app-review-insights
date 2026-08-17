@@ -7,7 +7,8 @@ from dataclasses import asdict, dataclass, field
 from typing import Any
 
 from app.evidence_engine import EvidenceReport, calculate_evidence_report
-from app.finding_schema import Finding
+from app.finding_eligibility import FINDING_TYPE_PRODUCT_PROBLEM
+from app.finding_schema import Finding, VALID_FINDING_TYPES
 
 
 STATUS_SUCCESS = "Success"
@@ -111,6 +112,7 @@ def validate_finding_payload(
             continue
 
         finding_id = _text(raw_finding.get("finding_id"))
+        finding_type = _text(raw_finding.get("finding_type")) or FINDING_TYPE_PRODUCT_PROBLEM
         issue_ids = _normalize_id_list(raw_finding.get("issue_ids"), f"{prefix}.issue_ids", errors)
         review_ids = _normalize_id_list(raw_finding.get("review_ids"), f"{prefix}.review_ids", errors)
         title = _text(raw_finding.get("title"))
@@ -133,6 +135,8 @@ def validate_finding_payload(
             seen_finding_ids.add(finding_id)
         if not title:
             errors.append(f"{prefix}.title: required")
+        if finding_type not in VALID_FINDING_TYPES:
+            errors.append(f"{prefix}.finding_type: invalid {finding_type!r}")
         if not statement:
             errors.append(f"{prefix}.statement: required")
         if not evidence_summary:
@@ -193,6 +197,7 @@ def validate_finding_payload(
 
         if (
             finding_id
+            and finding_type in VALID_FINDING_TYPES
             and issue_ids
             and review_ids
             and title
@@ -209,6 +214,7 @@ def validate_finding_payload(
             findings.append(
                 Finding(
                     finding_id=finding_id,
+                    finding_type=finding_type,
                     issue_ids=issue_ids,
                     review_ids=review_ids,
                     title=title,

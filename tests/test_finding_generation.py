@@ -34,6 +34,29 @@ class FindingGenerationTests(unittest.TestCase):
 
         self.assertEqual(result.validation.status, "Ineligible Issue")
 
+    def test_positive_feedback_issue_is_allowed_in_positive_focus(self) -> None:
+        positive_eligibility = [
+            {"issue_id": "ISSUE-001", "issue_type": "problem", "eligible_for_finding": False, "finding_type": "product_problem"},
+            {"issue_id": "ISSUE-004", "issue_type": "mixed", "eligible_for_finding": True, "finding_type": "positive_feedback"},
+            {"issue_id": "ISSUE-007", "issue_type": "positive_feedback", "eligible_for_finding": True, "finding_type": "positive_feedback"},
+            {"issue_id": "ISSUE-008", "issue_type": "neutral_observation", "eligible_for_finding": False, "finding_type": "neutral_observation"},
+        ]
+        result = _run(
+            _payload(
+                issue_ids=["ISSUE-007"],
+                review_ids=["r7"],
+                support_count=1,
+                finding_type="positive_feedback",
+                title="Positive workout experience",
+                statement="The current review sample shows users value the workout experience.",
+            ),
+            eligibility=positive_eligibility,
+            analysis_focus="positive_feedback_analysis",
+        )
+
+        self.assertTrue(result.validation.passed)
+        self.assertEqual(result.findings[0]["finding_type"], "positive_feedback")
+
     def test_neutral_observation_issue(self) -> None:
         result = _run(_payload(issue_ids=["ISSUE-008"], review_ids=["r8"], support_count=1))
 
@@ -181,6 +204,26 @@ class FindingGenerationTests(unittest.TestCase):
         self.assertNotIn("ISSUE-007", request.user_prompt)
         self.assertIn("Evidence-Grounded Finding Generation", request.system_prompt)
 
+    def test_positive_finding_request_keeps_positive_feedback_out_of_problem_framing(self) -> None:
+        positive_eligibility = [
+            {"issue_id": "ISSUE-001", "issue_type": "problem", "eligible_for_finding": False, "finding_type": "product_problem"},
+            {"issue_id": "ISSUE-007", "issue_type": "positive_feedback", "eligible_for_finding": True, "finding_type": "positive_feedback"},
+        ]
+        request = build_finding_request(
+            reviews=_reviews(),
+            issues=_issues(),
+            classifications=_classifications(),
+            eligibility=positive_eligibility,
+            analysis_goal="Positive goal",
+            analysis_focus="positive_feedback_analysis",
+        )
+        payload = json.loads(request.user_prompt)
+
+        self.assertEqual(payload["analysis_focus"], "positive_feedback_analysis")
+        self.assertIn("Do not describe valued experiences as problems", payload["finding_type_rule"])
+        self.assertIn("positive_feedback", request.system_prompt)
+        self.assertEqual([item["issue_id"] for item in payload["eligible_issues"]], ["ISSUE-007"])
+
     def test_build_finding_request_keeps_support_and_conflicts_disjoint(self) -> None:
         request = build_finding_request(
             reviews=_reviews(),
@@ -196,16 +239,17 @@ class FindingGenerationTests(unittest.TestCase):
         self.assertIn("must never appear in both lists", request.system_prompt)
 
 
-def _run(payload: dict):
+def _run(payload: dict, *, eligibility: list[dict] | None = None, analysis_focus: str = "problem_analysis"):
     provider = MockLLMProvider(json.dumps(payload))
     with TemporaryDirectory() as temp_dir:
         return generate_findings(
             reviews=_reviews(),
             issues=_issues(),
             classifications=_classifications(),
-            eligibility=_eligibility(),
+            eligibility=eligibility or _eligibility(),
             provider=provider,
             analysis_goal="Goal",
+            analysis_focus=analysis_focus,
             output_dir=Path(temp_dir),
             is_mock=True,
         )

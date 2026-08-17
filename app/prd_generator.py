@@ -63,6 +63,8 @@ Rules:
 25. Every success metric must be observable and measurable: phrase it with rate, count, time, percentage, retention, conversion, decrease, increase, reduction, complaints, reviews, or a numeric unit. Do not use vague wording such as "improved user experience", "better satisfaction", or "increase engagement" as a standalone metric.
 26. If the input Evidence, Requirement, and Version do not support a reliable success metric, return success_metrics as an empty list and add an open question asking what measurable success metric or target should be defined.
 27. If a metric concept is reasonable but the target value is a product decision, put that target definition in open_questions instead of inventing a number.
+28. For positive_feedback Requirements, do not use vague preservation metrics such as "remains high", "remains stable", or "maintain satisfaction" unless the input defines the measurement and target; otherwise leave success_metrics empty and put the metric definition in open_questions.
+29. Do not copy input Requirement or Version success_metrics blindly. Re-include only metrics that satisfy Rules 25-28; move unsupported metric definitions or targets to open_questions.
 
 Return only JSON matching the existing PRD schema."""
 
@@ -201,6 +203,7 @@ def build_prd_request(
             version_requirements.append(
                 {
                     "requirement_id": requirement_id,
+                    "requirement_type": requirement.get("requirement_type") or "problem",
                     "title": requirement.get("title"),
                     "description": requirement.get("description"),
                     "acceptance_criteria": requirement.get("acceptance_criteria"),
@@ -238,6 +241,7 @@ def build_prd_request(
             "analysis_goal": analysis_goal,
             "validated_versions": version_payload,
             "valid_version_ids": [version["version_id"] for version in version_payload],
+            "requirement_type_rule": "If a PRD contains positive_feedback Requirements, frame the context as a value or strength to preserve. Do not describe valued experiences as defects. The existing problem_statement field may contain a value/strength statement when the version is positive-feedback focused. For positive_feedback Requirements, use success_metrics only when the input provides a measurable metric definition; otherwise return success_metrics as [] and ask how to measure preservation in open_questions.",
             "required_output_schema": {
                 "prds": [
                     {
@@ -263,7 +267,7 @@ def build_prd_request(
                 "REQ-008": "The specific support channels should remain an open question if not evidence-backed.",
             },
             "goal_alignment_rule": "For each PRD, goals[0] must exactly equal the matching validated_versions[].required_prd_goal. Additional goals may expand that Version goal but must not replace it.",
-            "success_metric_rule": "Every success metric must be phrased as an observable metric using rate, count, time, percentage, retention, conversion, decrease, increase, reduction, complaints, reviews, or a numeric unit. Avoid vague standalone metrics such as improved trust, improved user experience, better satisfaction, or increase engagement. Do not invent target numbers such as 10%, 20%, 30%, or 50% unless those numbers exist in the input. If no reliable metric is supported, return success_metrics: [] and add an open question for metric definition or target.",
+            "success_metric_rule": "Every success metric must be phrased as an observable metric using rate, count, time, percentage, retention, conversion, decrease, increase, reduction, complaints, reviews, or a numeric unit. Avoid vague standalone metrics such as remains high, remains stable, maintain satisfaction, improved trust, improved user experience, better satisfaction, or increase engagement. Do not copy input success_metrics unless they satisfy this rule. Do not invent target numbers such as 10%, 20%, 30%, or 50% unless those numbers exist in the input. If no reliable metric is supported, return success_metrics: [] and add an open question for metric definition or target.",
         },
         ensure_ascii=False,
         indent=2,

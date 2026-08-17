@@ -5,6 +5,19 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from app.finding_eligibility import (
+    FINDING_TYPE_NEUTRAL_OBSERVATION,
+    FINDING_TYPE_POSITIVE_FEEDBACK,
+    FINDING_TYPE_PRODUCT_PROBLEM,
+)
+
+
+VALID_FINDING_TYPES = {
+    FINDING_TYPE_PRODUCT_PROBLEM,
+    FINDING_TYPE_POSITIVE_FEEDBACK,
+    FINDING_TYPE_NEUTRAL_OBSERVATION,
+}
+
 
 @dataclass(frozen=True)
 class Finding:
@@ -18,6 +31,7 @@ class Finding:
     confidence: float
     uncertainty: str
     conflicting_review_ids: list[str]
+    finding_type: str = FINDING_TYPE_PRODUCT_PROBLEM
 
 
 @dataclass(frozen=True)
@@ -49,6 +63,10 @@ FINDING_JSON_SCHEMA: dict[str, Any] = {
                 ],
                 "properties": {
                     "finding_id": {"type": "string", "minLength": 1},
+                    "finding_type": {
+                        "type": "string",
+                        "enum": sorted(VALID_FINDING_TYPES),
+                    },
                     "issue_ids": {
                         "type": "array",
                         "minItems": 1,
