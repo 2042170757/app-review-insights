@@ -23,7 +23,7 @@ class NormalizedReview(TypedDict):
     author: str | None
     created_at: str
     app_version: str | None
-    source_url: str
+    source_url: str | None
 
 
 @dataclass(frozen=True)

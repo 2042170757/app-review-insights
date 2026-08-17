@@ -186,3 +186,58 @@ The output distinguishes local JWT/configuration failures, HTTP 401, HTTP 403, A
 - This API is not a public arbitrary App Store review API.
 - Do not confuse App Store URL accessibility with App Store Connect API access. A public app page can be reachable while the API key has no access to that app's private App Store Connect resources.
 - This probe never prints or stores the JWT, private key contents, or other secrets.
+
+## Phase 0.75 Apify Provider
+
+Phase 0.75 adds a pluggable third-party Review Provider for validating a real US App Store review collection path. It does not implement AI, LLM workflows, database storage, React frontend, PRD generation, requirement generation, test case generation, roadmap generation, or the full analysis pipeline.
+
+### Configuration
+
+Install dependencies:
+
+```bash
+pip install -r requirements.txt
+```
+
+Create a local `.env` or otherwise export:
+
+```bash
+APIFY_API_TOKEN=
+```
+
+The repository includes `.env.example` with the required variable name only. Do not commit real Apify tokens.
+
+### Run The Smoke Test
+
+```bash
+python -m app.apify_smoke_test
+```
+
+The smoke test:
+
+1. Checks `APIFY_API_TOKEN`.
+2. Parses the target App Store URL.
+3. Calls the Apify actor `apihq/app-store-reviews-scraper`.
+4. Requests US reviews for App Store app ID `839285684`.
+5. Requests at most 50 recent reviews.
+6. Converts results to the same Unified Review Schema used by the rest of the project.
+7. Saves raw and normalized outputs.
+
+### Artifacts
+
+```text
+artifacts/raw/apify/raw_response.json
+artifacts/normalized/apify/normalized_reviews.json
+artifacts/normalized/apify/dataset_metadata.json
+```
+
+### Provider Limits
+
+- Apify is a third-party review collection provider.
+- The review source is the Apple App Store US storefront through the third-party collection service.
+- Apify requires an API token.
+- Data volume, available fields, request frequency, and accuracy depend on the third-party provider and Apple's storefront behavior.
+- The current smoke test requests at most 50 recent reviews.
+- This provider is not Apple official App Store Connect API.
+- It does not guarantee complete historical coverage.
+- The project core analysis engine should not depend on Apify specifically. Any provider that emits the Unified Review Schema can feed later stages.
