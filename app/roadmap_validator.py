@@ -23,6 +23,10 @@ STATUS_SELF_DEPENDENCY = "Self Dependency"
 STATUS_CIRCULAR_DEPENDENCY = "Circular Dependency"
 STATUS_VERSION_ORDER_INVALID = "Version Order Invalid"
 STATUS_VERSION_REQUIREMENT_MISMATCH = "Version Requirement Mismatch"
+STATUS_EMPTY_VERSION = "Empty Version"
+STATUS_DEFERRED_REASON_MISSING = "Deferred Reason Missing"
+STATUS_VERSION_GOAL_INCOHERENCE = "Version Goal Incoherence"
+STATUS_DEPENDENCY_CHANGED = "Dependency Changed"
 
 VERSION_ORDER = {"V1": 1, "V2": 2, "V3": 3, "Deferred": 4}
 
@@ -43,6 +47,10 @@ class RoadmapValidationResult:
     priority_mismatches: list[str] = field(default_factory=list)
     dependency_errors: list[str] = field(default_factory=list)
     version_requirement_mismatches: list[str] = field(default_factory=list)
+    empty_version_ids: list[str] = field(default_factory=list)
+    deferred_reason_errors: list[str] = field(default_factory=list)
+    deferred_rationale: dict[str, str] = field(default_factory=dict)
+    version_goal_errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -56,6 +64,8 @@ def validate_roadmap_output(
     requirements_by_id: dict[str, dict[str, Any]],
     requirement_validation_passed: bool,
     priority_by_requirement_id: dict[str, str],
+    enforce_product_quality: bool = True,
+    existing_dependencies_by_requirement_id: dict[str, list[str]] | None = None,
 ) -> RoadmapValidationResult:
     if not requirement_validation_passed:
         return RoadmapValidationResult(
@@ -75,6 +85,8 @@ def validate_roadmap_output(
         payload,
         requirements_by_id=requirements_by_id,
         priority_by_requirement_id=priority_by_requirement_id,
+        enforce_product_quality=enforce_product_quality,
+        existing_dependencies_by_requirement_id=existing_dependencies_by_requirement_id,
     )
 
 
@@ -83,12 +95,16 @@ def validate_roadmap_payload(
     *,
     requirements_by_id: dict[str, dict[str, Any]],
     priority_by_requirement_id: dict[str, str],
+    enforce_product_quality: bool = True,
+    existing_dependencies_by_requirement_id: dict[str, list[str]] | None = None,
 ) -> RoadmapValidationResult:
     errors: list[str] = []
     if not isinstance(payload, dict):
         return _fail(STATUS_SCHEMA_VALIDATION_FAILED, ["schema: root must be an object"])
     raw_versions = payload.get("versions")
     raw_items = payload.get("roadmap_items")
+    raw_deferred_ids = payload.get("deferred_requirement_ids", [])
+    raw_deferred_rationale = payload.get("deferred_rationale", {})
     if not isinstance(raw_versions, list):
         return _fail(STATUS_SCHEMA_VALIDATION_FAILED, ["schema: versions must be a list"])
     if not isinstance(raw_items, list):
@@ -102,6 +118,19 @@ def validate_roadmap_payload(
     version_ids = {version.version_id for version in versions}
     roadmap_items, item_errors = _parse_roadmap_items(raw_items)
     errors.extend(item_errors)
+    deferred_ids = _text_list(raw_deferred_ids, "deferred_requirement_ids", errors)
+    if not isinstance(raw_deferred_rationale, dict):
+        errors.append("deferred_rationale: must be an object")
+        deferred_rationale: dict[str, str] = {}
+    else:
+        deferred_rationale = {
+            _text(key): _text(value)
+            for key, value in raw_deferred_rationale.items()
+            if _text(key)
+        }
+        for key, value in deferred_rationale.items():
+            if not value:
+                errors.append(f"deferred_rationale.{key}: required")
     if errors:
         return _fail(STATUS_SCHEMA_VALIDATION_FAILED, errors)
 
@@ -111,7 +140,9 @@ def validate_roadmap_payload(
     unassigned_requirement_ids: set[str] = set()
     priority_mismatches: list[str] = []
     dependency_errors: list[str] = []
+    dependency_change_errors: list[str] = []
     version_requirement_mismatches: list[str] = []
+    deferred_reason_errors: list[str] = []
 
     seen_requirements: set[str] = set()
     assigned_requirements: set[str] = set()
@@ -138,6 +169,28 @@ def validate_roadmap_payload(
                 dependency_errors.append(f"{requirement_id}: unknown dependency {dependency_id}")
             if dependency_id == requirement_id:
                 dependency_errors.append(f"{requirement_id}: cannot depend on itself")
+        has_existing_dependency_record = (
+            existing_dependencies_by_requirement_id is not None
+            and requirement_id in existing_dependencies_by_requirement_id
+        )
+        existing_dependencies = sorted((existing_dependencies_by_requirement_id or {}).get(requirement_id, []))
+        if has_existing_dependency_record and sorted(item["dependencies"]) != existing_dependencies:
+            dependency_change_errors.append(
+                f"{requirement_id}: dependencies changed from {existing_dependencies} to {sorted(item['dependencies'])}"
+            )
+
+    deferred_item_ids = [
+        item["requirement_id"]
+        for item in roadmap_items
+        if item["version_id"] == "Deferred"
+    ]
+    all_deferred_ids = sorted(set(deferred_ids + deferred_item_ids))
+    for requirement_id in all_deferred_ids:
+        assigned_requirements.add(requirement_id)
+        if requirement_id not in requirements_by_id:
+            unknown_requirement_ids.add(requirement_id)
+        if not deferred_rationale.get(requirement_id):
+            deferred_reason_errors.append(f"{requirement_id}: deferred_rationale is required")
 
     for requirement_id in requirements_by_id:
         if requirement_id not in assigned_requirements:
@@ -156,6 +209,8 @@ def validate_roadmap_payload(
             version_requirement_mismatches.append(
                 f"version requirements missing from roadmap_items: {missing_in_roadmap}"
             )
+    empty_version_ids = [version.version_id for version in versions if version.version_id != "Deferred" and not version.requirement_ids]
+    goal_errors = _version_goal_errors(versions, requirements_by_id) if enforce_product_quality else []
 
     if duplicate_requirement_ids:
         return _fail(
@@ -182,8 +237,20 @@ def validate_roadmap_payload(
             [f"unassigned requirement id {item}" for item in sorted(unassigned_requirement_ids)],
             unassigned_requirement_ids=sorted(unassigned_requirement_ids),
         )
+    if deferred_reason_errors:
+        return _fail(
+            STATUS_DEFERRED_REASON_MISSING,
+            deferred_reason_errors,
+            deferred_reason_errors=deferred_reason_errors,
+        )
     if priority_mismatches:
         return _fail(STATUS_PRIORITY_MISMATCH, priority_mismatches, priority_mismatches=priority_mismatches)
+    if dependency_change_errors:
+        return _fail(
+            STATUS_DEPENDENCY_CHANGED,
+            dependency_change_errors,
+            dependency_errors=dependency_change_errors,
+        )
     if any("cannot depend on itself" in error for error in dependency_errors):
         return _fail(STATUS_SELF_DEPENDENCY, dependency_errors, dependency_errors=dependency_errors)
 
@@ -195,6 +262,19 @@ def validate_roadmap_payload(
     if order_errors:
         return _fail(STATUS_VERSION_ORDER_INVALID, order_errors, dependency_errors=order_errors)
 
+    if empty_version_ids:
+        return _fail(
+            STATUS_EMPTY_VERSION,
+            [f"empty version {version_id}" for version_id in empty_version_ids],
+            empty_version_ids=empty_version_ids,
+        )
+    if goal_errors:
+        return _fail(
+            STATUS_VERSION_GOAL_INCOHERENCE,
+            goal_errors,
+            version_goal_errors=goal_errors,
+        )
+
     if version_requirement_mismatches:
         return _fail(
             STATUS_VERSION_REQUIREMENT_MISMATCH,
@@ -202,13 +282,18 @@ def validate_roadmap_payload(
             version_requirement_mismatches=version_requirement_mismatches,
         )
 
-    deferred = sorted(item["requirement_id"] for item in roadmap_items if item["version_id"] == "Deferred")
+    deferred = sorted(set(all_deferred_ids))
     return RoadmapValidationResult(
         status=STATUS_SUCCESS,
         passed=True,
         versions=versions,
         roadmap_items=roadmap_items,
         deferred_requirement_ids=deferred,
+        deferred_rationale={
+            requirement_id: deferred_rationale[requirement_id]
+            for requirement_id in deferred
+            if requirement_id in deferred_rationale
+        },
     )
 
 
@@ -347,6 +432,48 @@ def _version_order_errors(roadmap_items: list[dict[str, Any]]) -> list[str]:
     return errors
 
 
+def _version_goal_errors(versions: list[Version], requirements_by_id: dict[str, dict[str, Any]]) -> list[str]:
+    errors: list[str] = []
+    generic_terms = {
+        "highest-priority",
+        "highest priority",
+        "lower roadmap urgency",
+        "remaining validated",
+        "priority product corrections",
+        "reserved",
+    }
+    domain_terms = {
+        "subscription": {"subscription", "billing", "paywall", "free", "premium", "cancellation"},
+        "content": {"workout", "content", "imagery", "customization", "freshness", "library"},
+        "operations": {"support", "ads", "redirects", "account"},
+    }
+    for version in versions:
+        if version.version_id == "Deferred" or not version.requirement_ids:
+            continue
+        goal_text = f"{version.name} {version.goal} {version.rationale}".lower()
+        if any(term in goal_text for term in generic_terms):
+            errors.append(f"{version.version_id}: version goal is too priority-bucket oriented")
+            continue
+        requirement_text = " ".join(
+            f"{requirements_by_id.get(requirement_id, {}).get('title', '')} "
+            f"{requirements_by_id.get(requirement_id, {}).get('description', '')}"
+            for requirement_id in version.requirement_ids
+        ).lower()
+        if not requirement_text:
+            continue
+        matched_domains = [
+            domain
+            for domain, terms in domain_terms.items()
+            if any(term in requirement_text for term in terms)
+        ]
+        if len(version.requirement_ids) > 1 and len(matched_domains) > 1:
+            if not any(term in goal_text for domain in matched_domains for term in domain_terms[domain]):
+                errors.append(
+                    f"{version.version_id}: mixed requirement domains are not explained by the version goal"
+                )
+    return errors
+
+
 def _fail(
     status: str,
     errors: list[str],
@@ -358,6 +485,10 @@ def _fail(
     priority_mismatches: list[str] | None = None,
     dependency_errors: list[str] | None = None,
     version_requirement_mismatches: list[str] | None = None,
+    empty_version_ids: list[str] | None = None,
+    deferred_reason_errors: list[str] | None = None,
+    deferred_rationale: dict[str, str] | None = None,
+    version_goal_errors: list[str] | None = None,
 ) -> RoadmapValidationResult:
     return RoadmapValidationResult(
         status=status,
@@ -370,6 +501,10 @@ def _fail(
         priority_mismatches=priority_mismatches or [],
         dependency_errors=dependency_errors or [],
         version_requirement_mismatches=version_requirement_mismatches or [],
+        empty_version_ids=empty_version_ids or [],
+        deferred_reason_errors=deferred_reason_errors or [],
+        deferred_rationale=deferred_rationale or {},
+        version_goal_errors=version_goal_errors or [],
     )
 
 

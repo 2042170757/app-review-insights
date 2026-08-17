@@ -27,6 +27,8 @@ class RoadmapItem:
 class RoadmapPlan:
     versions: list[dict[str, Any]]
     roadmap_items: list[dict[str, Any]]
+    deferred_requirement_ids: list[str]
+    deferred_rationale: dict[str, str]
 
 
 ROADMAP_JSON_SCHEMA: dict[str, Any] = {
@@ -55,6 +57,14 @@ ROADMAP_JSON_SCHEMA: dict[str, Any] = {
                     },
                 },
             },
+        },
+        "deferred_requirement_ids": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1},
+        },
+        "deferred_rationale": {
+            "type": "object",
+            "additionalProperties": {"type": "string", "minLength": 1},
         },
     },
 }

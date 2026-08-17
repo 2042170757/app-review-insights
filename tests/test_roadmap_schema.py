@@ -22,10 +22,11 @@ class RoadmapSchemaTests(unittest.TestCase):
         self.assertEqual(item.priority, "P1")
 
     def test_roadmap_plan_dataclass(self) -> None:
-        plan = RoadmapPlan(versions=[], roadmap_items=[])
+        plan = RoadmapPlan(versions=[], roadmap_items=[], deferred_requirement_ids=[], deferred_rationale={})
 
         self.assertEqual(plan.versions, [])
         self.assertEqual(plan.roadmap_items, [])
+        self.assertEqual(plan.deferred_requirement_ids, [])
 
     def test_schema_requires_roadmap_item_fields(self) -> None:
         required = set(ROADMAP_JSON_SCHEMA["properties"]["roadmap_items"]["items"]["required"])
@@ -34,6 +35,7 @@ class RoadmapSchemaTests(unittest.TestCase):
         self.assertIn("version_id", required)
         self.assertIn("priority", required)
         self.assertIn("dependencies", required)
+        self.assertIn("deferred_requirement_ids", ROADMAP_JSON_SCHEMA["properties"])
 
 
 if __name__ == "__main__":
