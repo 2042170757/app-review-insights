@@ -18,9 +18,9 @@ from app.llm.base import (
     ModelRequestError,
     ModelTimeoutError,
 )
+from app.llm.json_recovery import JSONRecoveryResult, parse_json_response
 from app.priority_engine import PriorityDecision, assign_requirement_priorities
 from app.requirement_validator import RequirementValidationResult, validate_requirement_output
-from app.topic_discovery import extract_json_text
 
 
 DEFAULT_REQUIREMENT_GOAL = "分析低评分用户对订阅和价格的主要问题"
@@ -72,6 +72,7 @@ class RequirementGenerationResult:
     error: str | None = None
     extracted_json: str | None = None
     normalized_json: str | None = None
+    json_recovery: dict[str, Any] | None = None
     response_metadata: dict[str, Any] | None = None
     is_mock: bool = False
 
@@ -128,7 +129,22 @@ def generate_requirements(
     except ModelRequestError as exc:
         return create_failure_result("Model Request Error", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id))
 
-    extracted_json = extract_json_text(response.raw_text)
+    recovery = parse_json_response(response.raw_text)
+    if not recovery.success:
+        result = create_invalid_json_result(
+            analysis_goal=analysis_goal,
+            output_dir=output_dir,
+            provider=provider,
+            is_mock=is_mock,
+            input_finding_count=len(findings_by_id),
+            raw_output=response.raw_text,
+            response_metadata=response.metadata,
+            json_recovery=recovery,
+        )
+        save_requirement_outputs(result, output_dir=output_dir)
+        return result
+
+    extracted_json = recovery.extracted_response
     evidence_reports_by_id = _evidence_reports_by_id(evidence_report)
     normalized_json, priority_decisions = _apply_priority_engine(
         extracted_json,
@@ -157,6 +173,7 @@ def generate_requirements(
         saved_paths={},
         extracted_json=extracted_json,
         normalized_json=normalized_json,
+        json_recovery=recovery.metadata(),
         response_metadata=response.metadata,
         is_mock=is_mock,
     )
@@ -267,6 +284,40 @@ def create_failure_result(
     return result
 
 
+def create_invalid_json_result(
+    *,
+    analysis_goal: str,
+    output_dir: Path,
+    provider: LLMProvider,
+    is_mock: bool,
+    input_finding_count: int,
+    raw_output: str,
+    response_metadata: dict[str, Any] | None,
+    json_recovery: JSONRecoveryResult,
+) -> RequirementGenerationResult:
+    error = json_recovery.error or "Invalid JSON"
+    validation = RequirementValidationResult(status="SKIPPED", passed=False, errors=[error])
+    return RequirementGenerationResult(
+        generation_status=STATUS_INVALID_JSON,
+        generation_passed=False,
+        raw_output=raw_output,
+        validation=validation,
+        requirements=[],
+        priority_report=[],
+        provider=getattr(provider, "provider_name", None),
+        model=getattr(provider, "model", None),
+        analysis_goal=analysis_goal,
+        input_finding_count=input_finding_count,
+        saved_paths={},
+        error=error,
+        extracted_json=json_recovery.extracted_response or None,
+        normalized_json=None,
+        json_recovery=json_recovery.metadata(),
+        response_metadata=response_metadata,
+        is_mock=is_mock,
+    )
+
+
 def save_requirement_outputs(
     result: RequirementGenerationResult,
     *,
@@ -287,8 +338,12 @@ def save_requirement_outputs(
                 "analysis_goal": result.analysis_goal,
                 "generation_status": result.generation_status,
                 "raw_output": result.raw_output,
+                "raw_response": result.raw_output,
                 "extracted_json": result.extracted_json,
+                "extracted_response": _raw_extracted_response(result),
+                "recovery_method": (result.json_recovery or {}).get("method"),
                 "normalized_json": result.normalized_json,
+                "json_recovery": result.json_recovery or {"attempted": False, "method": None, "success": False},
                 "response_metadata": result.response_metadata or {},
                 "error": result.error,
             },
@@ -306,6 +361,15 @@ def save_requirement_outputs(
     paths = {"raw": raw_path, "requirements": requirements_path, "validation": validation_path, "priority": priority_path}
     result.saved_paths = {key: str(path) for key, path in paths.items()}
     return paths
+
+
+def _raw_extracted_response(result: RequirementGenerationResult) -> Any:
+    if not result.extracted_json:
+        return None
+    try:
+        return json.loads(result.extracted_json)
+    except json.JSONDecodeError:
+        return result.extracted_json
 
 
 def _apply_priority_engine(

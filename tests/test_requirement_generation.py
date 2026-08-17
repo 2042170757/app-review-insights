@@ -187,7 +187,7 @@ class RequirementGenerationTests(unittest.TestCase):
 
         self.assertFalse(result.generation_passed)
         self.assertEqual(result.generation_status, STATUS_INVALID_JSON)
-        self.assertEqual(result.validation.status, STATUS_INVALID_JSON)
+        self.assertEqual(result.validation.status, "SKIPPED")
 
     def test_timeout_skips_validation(self) -> None:
         result = _generate_with_provider(_Provider("", error=ModelTimeoutError("Timeout")))
@@ -229,6 +229,8 @@ class RequirementGenerationTests(unittest.TestCase):
 
         self.assertEqual(raw["provider"], "mock")
         self.assertTrue(raw["is_mock"])
+        self.assertEqual(raw["json_recovery"]["method"], "direct_json")
+        self.assertFalse(raw["json_recovery"]["attempted"])
         self.assertEqual(len(requirements["requirements"]), 1)
         self.assertEqual(validation["status"], "Success")
         self.assertEqual(len(priority["priority_report"]), 1)

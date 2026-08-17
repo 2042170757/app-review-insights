@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,6 +17,7 @@ from app.llm.base import (
     ModelRequestError,
     ModelTimeoutError,
 )
+from app.llm.json_recovery import parse_json_response
 from app.topic_schema import Topic
 from app.topic_validator import TopicValidationResult, validate_topic_output
 
@@ -235,20 +235,5 @@ def _review_id(review: dict[str, Any]) -> str:
 
 
 def extract_json_text(raw_text: str) -> str:
-    candidates = [raw_text.strip()]
-    fenced_blocks = re.findall(r"```(?:json)?\s*(.*?)```", raw_text, flags=re.IGNORECASE | re.DOTALL)
-    candidates.extend(block.strip() for block in fenced_blocks)
-    first_brace = raw_text.find("{")
-    last_brace = raw_text.rfind("}")
-    if first_brace != -1 and last_brace > first_brace:
-        candidates.append(raw_text[first_brace : last_brace + 1].strip())
-
-    for candidate in candidates:
-        if not candidate:
-            continue
-        try:
-            json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        return candidate
-    return raw_text.strip()
+    result = parse_json_response(raw_text)
+    return result.extracted_response if result.success else raw_text.strip()
