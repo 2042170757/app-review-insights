@@ -6,6 +6,7 @@ import json
 import os
 from dataclasses import asdict
 from datetime import UTC, datetime
+from pathlib import Path
 
 from app.apify_provider import (
     APIFY_ACTOR_ID,
@@ -21,9 +22,12 @@ from app.url_resolver import parse_app_store_url
 TARGET_APP_URL = "https://apps.apple.com/us/app/workout-for-women-home-gym/id839285684"
 APIFY_API_TOKEN = "APIFY_API_TOKEN"
 MAX_REVIEWS = 50
+PROJECT_ROOT = Path(__file__).resolve().parent.parent
+DOTENV_PATH = PROJECT_ROOT / ".env"
 
 
 def main() -> int:
+    load_apify_environment()
     token = os.environ.get(APIFY_API_TOKEN)
     if not token:
         result = _missing_token_result()
@@ -79,6 +83,17 @@ def main() -> int:
 def _has_error(result: object, phrase: str) -> bool:
     errors = getattr(result, "errors", [])
     return any(phrase in ((error.message or "") + " " + (error.raw_error or "")).lower() for error in errors)
+
+
+def load_apify_environment(dotenv_path: Path = DOTENV_PATH) -> bool:
+    """Load project .env without overriding existing system environment values."""
+
+    if not dotenv_path.is_file():
+        return False
+
+    from dotenv import load_dotenv
+
+    return bool(load_dotenv(dotenv_path=dotenv_path, override=False))
 
 
 def _missing_token_result() -> ApifyReviewFetchResult:

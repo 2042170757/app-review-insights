@@ -205,7 +205,7 @@ Create a local `.env` or otherwise export:
 APIFY_API_TOKEN=
 ```
 
-The repository includes `.env.example` with the required variable name only. Do not commit real Apify tokens.
+The smoke test loads the project-root `.env` file with `python-dotenv` at startup. Existing system environment variables have priority over `.env` values. The repository includes `.env.example` with the required variable name only. Do not commit real Apify tokens.
 
 ### Run The Smoke Test
 

@@ -1,6 +1,10 @@
 import unittest
 from datetime import datetime
+from pathlib import Path
+from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
+from app.apify_smoke_test import APIFY_API_TOKEN, load_apify_environment
 from app.apify_provider import (
     APIFY_ACTOR_ID,
     ApifyReviewProvider,
@@ -13,6 +17,38 @@ class ApifyReviewProviderTests(unittest.TestCase):
     def test_token_missing(self) -> None:
         with self.assertRaises(ValueError):
             ApifyReviewProvider(api_token="")
+
+    def test_dotenv_loads_project_token_when_system_env_missing(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            dotenv_path = Path(temp_dir) / ".env"
+            dotenv_path.write_text("APIFY_API_TOKEN=dotenv-token\n", encoding="utf-8")
+
+            with patch.dict("os.environ", {}, clear=True):
+                loaded = load_apify_environment(dotenv_path)
+
+                self.assertTrue(loaded)
+                self.assertEqual(__import__("os").environ[APIFY_API_TOKEN], "dotenv-token")
+
+    def test_system_environment_has_priority_over_dotenv(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            dotenv_path = Path(temp_dir) / ".env"
+            dotenv_path.write_text("APIFY_API_TOKEN=dotenv-token\n", encoding="utf-8")
+
+            with patch.dict("os.environ", {APIFY_API_TOKEN: "system-token"}, clear=True):
+                loaded = load_apify_environment(dotenv_path)
+
+                self.assertTrue(loaded)
+                self.assertEqual(__import__("os").environ[APIFY_API_TOKEN], "system-token")
+
+    def test_missing_dotenv_keeps_system_environment_path_available(self) -> None:
+        with TemporaryDirectory() as temp_dir:
+            dotenv_path = Path(temp_dir) / ".env"
+
+            with patch.dict("os.environ", {APIFY_API_TOKEN: "system-token"}, clear=True):
+                loaded = load_apify_environment(dotenv_path)
+
+                self.assertFalse(loaded)
+                self.assertEqual(__import__("os").environ[APIFY_API_TOKEN], "system-token")
 
     def test_actor_configuration(self) -> None:
         provider = ApifyReviewProvider(api_token="token", territory="US")
@@ -123,6 +159,54 @@ class ApifyReviewProviderTests(unittest.TestCase):
         self.assertTrue(result.errors)
         self.assertIn("Apify dataset returned no review rows.", result.errors[0].message)
 
+    def test_pydantic_style_actor_run_response_without_real_api(self) -> None:
+        class RunModel:
+            def model_dump(self, mode):
+                return {
+                    "id": "run-1",
+                    "status": "SUCCEEDED",
+                    "default_dataset_id": "dataset-1",
+                }
+
+        class ModelRunProvider(ApifyReviewProvider):
+            def _build_client(self):
+                class ActorClient:
+                    def call(self, run_input):
+                        return RunModel()
+
+                class DatasetClient:
+                    def iterate_items(self):
+                        return iter(
+                            [
+                                {
+                                    "success": True,
+                                    "review_id": "review-1",
+                                    "app_id": "839285684",
+                                    "rating": 5,
+                                    "title": "Title",
+                                    "text": "Body",
+                                    "posted_at": "2026-07-09T18:01:47Z",
+                                }
+                            ]
+                        )
+
+                class Client:
+                    def actor(self, actor_id):
+                        return ActorClient()
+
+                    def dataset(self, dataset_id):
+                        return DatasetClient()
+
+                return Client()
+
+        result = ModelRunProvider(api_token="token").fetch_reviews("839285684", max_reviews=50)
+
+        self.assertFalse(result.errors)
+        self.assertEqual(len(result.reviews), 1)
+        self.assertIsNotNone(result.dataset_metadata)
+        assert result.dataset_metadata is not None
+        self.assertEqual(result.dataset_metadata.dataset_id, "dataset-1")
+
     def test_error_mapping(self) -> None:
         self.assertEqual(classify_apify_exception(Exception("401 Unauthorized")), "authentication failure")
         self.assertEqual(classify_apify_exception(Exception("timeout")), "network failure")
@@ -134,4 +218,3 @@ class ApifyReviewProviderTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
-

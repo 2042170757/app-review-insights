@@ -86,8 +86,10 @@ class ApifyReviewProvider:
 
         try:
             client = self._build_client()
-            run_info = client.actor(self.actor_id).call(
-                run_input=self.build_actor_input(app_id, max_reviews=max_reviews)
+            run_info = _to_plain_dict(
+                client.actor(self.actor_id).call(
+                    run_input=self.build_actor_input(app_id, max_reviews=max_reviews)
+                )
             )
         except ImportError as exc:
             result.errors.append(
@@ -119,7 +121,7 @@ class ApifyReviewProvider:
             )
             return self._finish_result(result, app_id, max_reviews, retrieved_at, source_url, run_info)
 
-        dataset_id = run_info.get("defaultDatasetId")
+        dataset_id = _run_value(run_info, "defaultDatasetId", "default_dataset_id")
         if not dataset_id:
             result.errors.append(
                 self._error(
@@ -252,11 +254,9 @@ class ApifyReviewProvider:
                 "This smoke test validates up to 50 recent US reviews and does not guarantee complete historical coverage.",
             ],
             run_id=str(run_info.get("id")) if run_info and run_info.get("id") else None,
-            dataset_id=(
-                str(run_info.get("defaultDatasetId"))
-                if run_info and run_info.get("defaultDatasetId")
-                else None
-            ),
+            dataset_id=str(_run_value(run_info, "defaultDatasetId", "default_dataset_id"))
+            if run_info and _run_value(run_info, "defaultDatasetId", "default_dataset_id")
+            else None,
             actor_status=str(run_info.get("status")) if run_info and run_info.get("status") else None,
             errors=[asdict(error) for error in result.errors],
         )
@@ -314,6 +314,31 @@ def normalize_apify_review(
         "app_version": item.get("app_version") or None,
         "source_url": item.get("url") or None,
     }
+
+
+def _to_plain_dict(value: Any) -> dict[str, Any]:
+    if isinstance(value, dict):
+        return value
+    if hasattr(value, "model_dump"):
+        dumped = value.model_dump(mode="json")
+        if isinstance(dumped, dict):
+            return dumped
+    attrs = {
+        key: getattr(value, key)
+        for key in ("id", "status", "default_dataset_id", "defaultDatasetId")
+        if hasattr(value, key)
+    }
+    if attrs:
+        return attrs
+    raise TypeError(f"Unsupported Apify run info type: {type(value).__name__}")
+
+
+def _run_value(run_info: dict[str, Any], *keys: str) -> Any:
+    for key in keys:
+        value = run_info.get(key)
+        if value:
+            return value
+    return None
 
 
 def classify_apify_exception(exc: Exception, *, dataset: bool = False) -> str:
