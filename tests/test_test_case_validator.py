@@ -5,10 +5,13 @@ from app.test_case_validator import (
     STATUS_ACCEPTANCE_CRITERION_MISMATCH,
     STATUS_DUPLICATE_TEST_CASE_ID,
     STATUS_GENERIC_TEST_CASE,
+    STATUS_COVERAGE_INCOMPLETE,
     STATUS_INPUT_VALIDATION_FAILED,
     STATUS_INVALID_PRIORITY,
     STATUS_INVALID_TEST_TYPE,
+    STATUS_PRIORITY_MISMATCH,
     STATUS_SCHEMA_VALIDATION_FAILED,
+    STATUS_SCOPE_OVERREACH,
     STATUS_SUCCESS,
     STATUS_TRACEABILITY_MISMATCH,
     STATUS_UNKNOWN_ACCEPTANCE_CRITERION_ID,
@@ -99,6 +102,23 @@ class TestCaseValidatorTests(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertEqual(result.status, STATUS_INVALID_PRIORITY)
 
+    def test_priority_mismatch(self) -> None:
+        payload = _payload()
+        payload["test_cases"][0]["priority"] = "P2"
+        result = _validate(payload)
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_PRIORITY_MISMATCH)
+
+    def test_scope_overreach(self) -> None:
+        payload = _payload()
+        payload["test_cases"][0]["steps"] = ["Test refund handling after the subscription is cancelled."]
+        payload["test_cases"][0]["expected_result"] = "A refund is issued automatically."
+        result = _validate(payload)
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_SCOPE_OVERREACH)
+
     def test_multiple_test_cases_cover_same_acceptance_criterion_once(self) -> None:
         payload = _payload()
         second = dict(payload["test_cases"][0])
@@ -117,6 +137,28 @@ class TestCaseValidatorTests(unittest.TestCase):
         self.assertTrue(result.passed)
         self.assertEqual(result.coverage.covered_acceptance_criteria, 2)
 
+    def test_mixed_positive_and_negative_test_scenario(self) -> None:
+        payload = _payload()
+        payload["test_cases"][0]["title"] = "Validate free access is visible before subscription"
+        payload["test_cases"][0]["steps"] = [
+            "Open the free access decision point.",
+            "Compare the visible free access information against the subscription prompt.",
+        ]
+        payload["test_cases"][0]["expected_result"] = "Free access remains visible and is not hidden by the subscription prompt."
+        result = _validate(payload)
+
+        self.assertTrue(result.passed)
+
+    def test_boundary_test_case(self) -> None:
+        payload = _payload()
+        payload["test_cases"][0]["title"] = "Validate free access limit boundary"
+        payload["test_cases"][0]["steps"] = ["Review the exact free access limit shown at the decision point."]
+        payload["test_cases"][0]["expected_result"] = "The displayed free access limit satisfies REQ-001-AC-1."
+        payload["test_cases"][0]["test_type"] = "edge_case"
+        result = _validate(payload)
+
+        self.assertTrue(result.passed)
+
     def test_requirement_without_test_coverage(self) -> None:
         result = _validate(_payload())
 
@@ -126,6 +168,18 @@ class TestCaseValidatorTests(unittest.TestCase):
         result = _validate(_payload())
 
         self.assertIn("REQ-001-AC-2", result.coverage.uncovered_acceptance_criteria_ids)
+
+    def test_full_coverage_enforcement(self) -> None:
+        result = validate_test_case_output(
+            json.dumps(_payload()),
+            requirements=_requirements(),
+            requirement_validation_passed=True,
+            prd_validation_passed=True,
+            enforce_full_coverage=True,
+        )
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_COVERAGE_INCOMPLETE)
 
     def test_input_validation_failed(self) -> None:
         result = validate_test_case_output(
@@ -187,11 +241,13 @@ def _requirements() -> list[dict]:
             "requirement_id": "REQ-001",
             "finding_ids": ["FINDING-001"],
             "acceptance_criteria": ["Free access is visible.", "Free access limits are explained."],
+            "priority": "P1",
         },
         {
             "requirement_id": "REQ-002",
             "finding_ids": ["FINDING-001"],
             "acceptance_criteria": ["Subscription value is explained."],
+            "priority": "P2",
         },
     ]
 

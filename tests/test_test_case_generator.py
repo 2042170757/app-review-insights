@@ -3,7 +3,14 @@ import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-from app.test_case_generator import build_default_mock_output, create_mock_provider, generate_test_cases, save_test_case_outputs
+from app.llm.base import LLMRequest, LLMResponse, ModelRequestError, ModelTimeoutError
+from app.test_case_generator import (
+    build_default_mock_output,
+    build_test_case_request,
+    create_mock_provider,
+    generate_test_cases,
+    save_test_case_outputs,
+)
 
 
 class TestCaseGeneratorTests(unittest.TestCase):
@@ -21,6 +28,8 @@ class TestCaseGeneratorTests(unittest.TestCase):
                 requirements=_requirements(),
                 requirement_validation=_pass_validation(),
                 prd_validation=_pass_validation(),
+                prds=_prds(),
+                roadmap=_roadmap(),
                 findings=_findings(),
                 reviews=_reviews(),
                 provider=provider,
@@ -50,6 +59,70 @@ class TestCaseGeneratorTests(unittest.TestCase):
         self.assertEqual(result.validation.status, "SKIPPED")
         self.assertEqual(provider.requests, [])
 
+    def test_model_request_error_skips_validation(self) -> None:
+        provider = _FailingProvider(ModelRequestError("Model Request Error: failed"))
+        with TemporaryDirectory() as temp_dir:
+            result = generate_test_cases(
+                requirements=_requirements(),
+                requirement_validation=_pass_validation(),
+                prd_validation=_pass_validation(),
+                provider=provider,
+                output_dir=Path(temp_dir),
+                is_mock=False,
+            )
+
+        self.assertFalse(result.generation_passed)
+        self.assertEqual(result.generation_status, "Model Request Error")
+        self.assertEqual(result.validation.status, "SKIPPED")
+
+    def test_timeout_skips_validation(self) -> None:
+        provider = _FailingProvider(ModelTimeoutError("Timeout"))
+        with TemporaryDirectory() as temp_dir:
+            result = generate_test_cases(
+                requirements=_requirements(),
+                requirement_validation=_pass_validation(),
+                prd_validation=_pass_validation(),
+                provider=provider,
+                output_dir=Path(temp_dir),
+                is_mock=False,
+            )
+
+        self.assertFalse(result.generation_passed)
+        self.assertEqual(result.generation_status, "Timeout")
+        self.assertEqual(result.validation.status, "SKIPPED")
+
+    def test_analysis_goal_passed_to_provider(self) -> None:
+        provider = create_mock_provider(build_default_mock_output(_requirements()))
+        with TemporaryDirectory() as temp_dir:
+            generate_test_cases(
+                requirements=_requirements(),
+                requirement_validation=_pass_validation(),
+                prd_validation=_pass_validation(),
+                provider=provider,
+                analysis_goal="custom test goal",
+                output_dir=Path(temp_dir),
+            )
+
+        self.assertEqual(provider.requests[0].analysis_goal, "custom test goal")
+        self.assertIn("custom test goal", provider.requests[0].user_prompt)
+
+    def test_build_request_contains_prd_scope_and_acceptance_criteria(self) -> None:
+        request = build_test_case_request(
+            requirements=_requirements(),
+            prds=_prds(),
+            roadmap=_roadmap(),
+            analysis_goal="goal",
+        )
+        payload = json.loads(request.user_prompt)
+
+        self.assertEqual(payload["analysis_goal"], "goal")
+        self.assertEqual(payload["validated_requirements"][0]["requirement_id"], "REQ-001")
+        self.assertEqual(
+            payload["validated_requirements"][0]["acceptance_criteria"][0]["acceptance_criteria_id"],
+            "REQ-001-AC-1",
+        )
+        self.assertEqual(payload["validated_requirements"][0]["prd_scope"][0]["prd_id"], "PRD-V1")
+
     def test_save_outputs_marks_mock(self) -> None:
         provider = create_mock_provider(build_default_mock_output(_requirements()))
         with TemporaryDirectory() as temp_dir:
@@ -57,6 +130,8 @@ class TestCaseGeneratorTests(unittest.TestCase):
                 requirements=_requirements(),
                 requirement_validation=_pass_validation(),
                 prd_validation=_pass_validation(),
+                prds=_prds(),
+                roadmap=_roadmap(),
                 findings=_findings(),
                 reviews=_reviews(),
                 provider=provider,
@@ -94,6 +169,33 @@ def _requirements() -> list[dict]:
     ]
 
 
+def _prds() -> list[dict]:
+    return [
+        {
+            "prd_id": "PRD-V1",
+            "version_id": "V1",
+            "title": "Subscription PRD",
+            "requirement_ids": ["REQ-001", "REQ-002"],
+            "goals": ["Improve subscription clarity"],
+            "non_goals": [],
+            "open_questions": [],
+        }
+    ]
+
+
+def _roadmap() -> dict:
+    return {
+        "versions": [
+            {
+                "version_id": "V1",
+                "name": "Subscription",
+                "goal": "Improve subscription clarity.",
+                "requirement_ids": ["REQ-001", "REQ-002"],
+            }
+        ]
+    }
+
+
 def _findings() -> list[dict]:
     return [
         {"finding_id": "FINDING-001", "review_ids": ["review-001"]},
@@ -103,6 +205,17 @@ def _findings() -> list[dict]:
 
 def _reviews() -> list[dict]:
     return [{"id": "review-001"}, {"id": "review-002"}]
+
+
+class _FailingProvider:
+    provider_name = "deepseek"
+    model = "deepseek-v4-flash"
+
+    def __init__(self, error: Exception) -> None:
+        self.error = error
+
+    def generate(self, request: LLMRequest) -> LLMResponse:
+        raise self.error
 
 
 if __name__ == "__main__":

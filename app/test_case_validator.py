@@ -22,8 +22,11 @@ STATUS_ACCEPTANCE_CRITERION_MISMATCH = "Acceptance Criterion Mismatch"
 STATUS_DUPLICATE_TEST_CASE_ID = "Duplicate Test Case ID"
 STATUS_INVALID_TEST_TYPE = "Invalid Test Type"
 STATUS_INVALID_PRIORITY = "Invalid Priority"
+STATUS_PRIORITY_MISMATCH = "Priority Mismatch"
 STATUS_GENERIC_TEST_CASE = "Generic Test Case"
 STATUS_TRACEABILITY_MISMATCH = "Traceability Mismatch"
+STATUS_SCOPE_OVERREACH = "Scope Overreach"
+STATUS_COVERAGE_INCOMPLETE = "Coverage Incomplete"
 
 GENERIC_PHRASES = {
     "测试功能是否正常",
@@ -50,8 +53,10 @@ class TestCaseValidationResult:
     duplicate_test_case_ids: list[str] = field(default_factory=list)
     invalid_test_type_errors: list[str] = field(default_factory=list)
     invalid_priority_errors: list[str] = field(default_factory=list)
+    priority_mismatches: list[str] = field(default_factory=list)
     generic_test_case_errors: list[str] = field(default_factory=list)
     traceability_errors: list[str] = field(default_factory=list)
+    scope_overreach_errors: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
         payload = asdict(self)
@@ -68,6 +73,7 @@ def validate_test_case_output(
     prd_validation_passed: bool,
     findings_by_id: dict[str, dict[str, Any]] | None = None,
     valid_review_ids: set[str] | None = None,
+    enforce_full_coverage: bool = False,
 ) -> TestCaseValidationResult:
     if not (requirement_validation_passed and prd_validation_passed):
         return TestCaseValidationResult(
@@ -90,6 +96,7 @@ def validate_test_case_output(
         requirements=requirements,
         findings_by_id=findings_by_id or {},
         valid_review_ids=valid_review_ids or set(),
+        enforce_full_coverage=enforce_full_coverage,
     )
 
 
@@ -99,6 +106,7 @@ def validate_test_case_payload(
     requirements: list[dict[str, Any]],
     findings_by_id: dict[str, dict[str, Any]] | None = None,
     valid_review_ids: set[str] | None = None,
+    enforce_full_coverage: bool = False,
 ) -> TestCaseValidationResult:
     if not isinstance(payload, dict):
         return _fail(
@@ -144,8 +152,10 @@ def validate_test_case_payload(
     ac_mismatches: list[str] = []
     test_type_errors: list[str] = []
     priority_errors: list[str] = []
+    priority_mismatch_errors: list[str] = []
     generic_errors: list[str] = []
     traceability_errors: list[str] = []
+    scope_overreach_errors: list[str] = []
 
     for index, raw_test_case in enumerate(raw_test_cases):
         prefix = f"test_cases[{index}]"
@@ -180,12 +190,20 @@ def validate_test_case_payload(
             test_type_errors.append(f"{prefix}.test_type: invalid {test_type!r}")
         if priority not in VALID_PRIORITIES:
             priority_errors.append(f"{prefix}.priority: invalid {priority!r}")
+        elif requirement_id in requirements_by_id:
+            requirement_priority = _text(requirements_by_id[requirement_id].get("priority"))
+            if requirement_priority and priority != requirement_priority:
+                priority_mismatch_errors.append(
+                    f"{prefix}.priority: {priority} != requirement priority {requirement_priority}"
+                )
 
+        referenced_criteria_texts: list[str] = []
         for acceptance_criteria_id in acceptance_criteria_ids:
             acceptance_criterion = acceptance_criteria_by_id.get(acceptance_criteria_id)
             if not acceptance_criterion:
                 unknown_acceptance_criteria_ids.add(acceptance_criteria_id)
                 continue
+            referenced_criteria_texts.append(_text(acceptance_criterion.get("text")))
             if requirement_id and acceptance_criterion["requirement_id"] != requirement_id:
                 ac_mismatches.append(
                     f"{prefix}.acceptance_criteria_ids: {acceptance_criteria_id} belongs to {acceptance_criterion['requirement_id']}, not {requirement_id}"
@@ -201,6 +219,9 @@ def validate_test_case_payload(
                 valid_review_ids=valid_review_ids,
                 traceability_errors=traceability_errors,
             )
+        scope_error = _scope_overreach_error(prefix, title, steps, expected_result, referenced_criteria_texts)
+        if scope_error:
+            scope_overreach_errors.append(scope_error)
 
         if (
             test_case_id
@@ -262,8 +283,22 @@ def validate_test_case_payload(
         return _fail(STATUS_INVALID_TEST_TYPE, test_type_errors, coverage=coverage, invalid_test_type_errors=test_type_errors)
     if priority_errors:
         return _fail(STATUS_INVALID_PRIORITY, priority_errors, coverage=coverage, invalid_priority_errors=priority_errors)
+    if priority_mismatch_errors:
+        return _fail(
+            STATUS_PRIORITY_MISMATCH,
+            priority_mismatch_errors,
+            coverage=coverage,
+            priority_mismatches=priority_mismatch_errors,
+        )
     if generic_errors:
         return _fail(STATUS_GENERIC_TEST_CASE, generic_errors, coverage=coverage, generic_test_case_errors=generic_errors)
+    if scope_overreach_errors:
+        return _fail(
+            STATUS_SCOPE_OVERREACH,
+            scope_overreach_errors,
+            coverage=coverage,
+            scope_overreach_errors=scope_overreach_errors,
+        )
     if traceability_errors:
         return _fail(
             STATUS_TRACEABILITY_MISMATCH,
@@ -273,6 +308,13 @@ def validate_test_case_payload(
         )
     if errors:
         return _fail(STATUS_SCHEMA_VALIDATION_FAILED, errors, coverage=coverage)
+    if enforce_full_coverage and (coverage.uncovered_requirement_ids or coverage.uncovered_acceptance_criteria_ids):
+        coverage_errors = []
+        if coverage.uncovered_requirement_ids:
+            coverage_errors.append(f"uncovered requirements: {coverage.uncovered_requirement_ids}")
+        if coverage.uncovered_acceptance_criteria_ids:
+            coverage_errors.append(f"uncovered acceptance criteria: {coverage.uncovered_acceptance_criteria_ids}")
+        return _fail(STATUS_COVERAGE_INCOMPLETE, coverage_errors, coverage=coverage)
     return TestCaseValidationResult(status=STATUS_SUCCESS, passed=True, test_cases=test_cases, coverage=coverage)
 
 
@@ -315,8 +357,10 @@ def _fail(
     duplicate_test_case_ids: list[str] | None = None,
     invalid_test_type_errors: list[str] | None = None,
     invalid_priority_errors: list[str] | None = None,
+    priority_mismatches: list[str] | None = None,
     generic_test_case_errors: list[str] | None = None,
     traceability_errors: list[str] | None = None,
+    scope_overreach_errors: list[str] | None = None,
 ) -> TestCaseValidationResult:
     return TestCaseValidationResult(
         status=status,
@@ -329,8 +373,10 @@ def _fail(
         duplicate_test_case_ids=duplicate_test_case_ids or [],
         invalid_test_type_errors=invalid_test_type_errors or [],
         invalid_priority_errors=invalid_priority_errors or [],
+        priority_mismatches=priority_mismatches or [],
         generic_test_case_errors=generic_test_case_errors or [],
         traceability_errors=traceability_errors or [],
+        scope_overreach_errors=scope_overreach_errors or [],
     )
 
 
@@ -339,6 +385,22 @@ def _is_generic_test_case(title: str, steps: list[str], expected_result: str) ->
     if combined in GENERIC_PHRASES:
         return True
     return any(phrase in combined for phrase in GENERIC_PHRASES)
+
+
+def _scope_overreach_error(prefix: str, title: str, steps: list[str], expected_result: str, criteria_texts: list[str]) -> str | None:
+    test_text = " ".join([title, *steps, expected_result]).lower()
+    criteria_text = " ".join(criteria_texts).lower()
+    overreach_terms = {
+        "refund": {"refund", "退款"},
+        "coupon": {"coupon", "discount", "promo", "优惠券", "折扣"},
+        "payment_failure": {"payment failed", "payment failure", "card declined", "支付失败"},
+        "new_plan": {"new membership", "new plan", "loyalty", "会员等级"},
+        "technical": {"api", "database", "endpoint", "sql", "react", "vue"},
+    }
+    for label, terms in overreach_terms.items():
+        if any(term in test_text for term in terms) and not any(term in criteria_text for term in terms):
+            return f"{prefix}: scope overreach introduces {label}"
+    return None
 
 
 def _text_list(value: Any, field_name: str, errors: list[str], *, min_items: int) -> list[str]:
