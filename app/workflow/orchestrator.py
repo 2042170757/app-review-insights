@@ -18,6 +18,7 @@ from app.workflow.models import (
     now_utc,
     normalize_analysis_goal,
 )
+from app.workflow.artifacts import snapshot_stage_artifacts
 from app.workflow.pipeline import BackendPipelineRunner, WorkflowStageExecutionError
 from app.workflow.stages import (
     ERROR_INPUT,
@@ -175,7 +176,8 @@ class WorkflowOrchestrator:
             stage.started_at = stage.started_at or now_utc()
             stage.completed_at = now_utc()
             stage.message = message or "Completed"
-            stage.artifacts = list(artifacts or stage.artifacts)
+            requested_artifacts = list(artifacts or stage.artifacts)
+            stage.artifacts = snapshot_stage_artifacts(run_id, stage_id, requested_artifacts) or requested_artifacts
             stage.warnings = list(warnings or [])
             stage.summary = dict(summary or {})
             stage.elapsed_seconds = elapsed_seconds
@@ -291,7 +293,9 @@ class WorkflowOrchestrator:
                     )
                     with self._lock:
                         failed_stage = _find_stage(self.get_run(run_id), stage_id)
-                        failed_stage.artifacts = exc.artifacts
+                        failed_stage.artifacts = (
+                            snapshot_stage_artifacts(run_id, stage_id, exc.artifacts) or exc.artifacts
+                        )
                         failed_stage.warnings = exc.warnings
                         failed_stage.summary = exc.summary
                         _apply_validation_summary(self.get_run(run_id), failed_stage.summary)

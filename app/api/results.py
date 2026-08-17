@@ -1,0 +1,316 @@
+"""Read-only workflow result adapters for the analysis dashboard."""
+
+from __future__ import annotations
+
+import json
+from pathlib import Path
+from typing import Any
+
+from app.workflow.artifacts import find_run_artifact
+from app.workflow.models import RunState
+
+
+def reviews_payload(run: RunState) -> dict[str, Any]:
+    reviews = _load_json(run, "reviews.json").get("reviews", [])
+    normalized = _load_json(run, "normalized_reviews.json").get("reviews", [])
+    return {
+        **_base(run, bool(reviews)),
+        "reviews": reviews,
+        "raw_reviews": normalized,
+        "statistics": _load_json(run, "statistics.json"),
+        "processing_report": _load_json(run, "processing_report.json"),
+        "dataset_metadata": _load_json(run, "dataset_metadata.json"),
+    }
+
+
+def topics_payload(run: RunState) -> dict[str, Any]:
+    topics = _load_json(run, "topics.json").get("topics", [])
+    return {
+        **_base(run, bool(topics)),
+        "topics": topics,
+        "validation": _load_json(run, "topic_validation.json"),
+        "raw": _raw_metadata(_load_json(run, "topic_discovery_raw.json")),
+    }
+
+
+def issues_payload(run: RunState) -> dict[str, Any]:
+    payload = _load_json(run, "issues.json")
+    classifications = _load_json(run, "issue_classification.json").get("classifications", [])
+    eligibility = _load_json(run, "finding_eligibility.json").get("eligibility", [])
+    issues = _decorate_issues(payload.get("issues", []), classifications, eligibility)
+    return {
+        **_base(run, bool(issues)),
+        "issues": issues,
+        "unmerged_topic_ids": payload.get("unmerged_topic_ids", []),
+        "classifications": classifications,
+        "eligibility": eligibility,
+        "validation": _load_json(run, "issue_validation.json"),
+        "raw": _raw_metadata(_load_json(run, "issue_consolidation_raw.json")),
+    }
+
+
+def findings_payload(run: RunState) -> dict[str, Any]:
+    findings = _load_json(run, "findings.json").get("findings", [])
+    evidence_reports = _load_json(run, "evidence_report.json").get("evidence_reports", [])
+    return {
+        **_base(run, bool(findings)),
+        "findings": findings,
+        "evidence_reports": evidence_reports,
+        "validation": _load_json(run, "finding_validation.json"),
+        "raw": _raw_metadata(_load_json(run, "finding_generation_raw.json")),
+    }
+
+
+def requirements_payload(run: RunState) -> dict[str, Any]:
+    requirements = _load_json(run, "requirements.json").get("requirements", [])
+    return {
+        **_base(run, bool(requirements)),
+        "requirements": requirements,
+        "validation": _load_json(run, "requirement_validation.json"),
+        "priority_report": _load_json(run, "priority_report.json").get("priority_report", []),
+        "raw": _raw_metadata(_load_json(run, "requirement_generation_raw.json")),
+    }
+
+
+def roadmap_payload(run: RunState) -> dict[str, Any]:
+    roadmap = _load_json(run, "roadmap.json")
+    versions = roadmap.get("versions", [])
+    return {
+        **_base(run, bool(versions)),
+        "versions": versions,
+        "roadmap_items": roadmap.get("roadmap_items", []),
+        "deferred": roadmap.get("deferred", []),
+        "validation": _load_json(run, "roadmap_validation.json"),
+        "raw": _raw_metadata(_load_json(run, "roadmap_generation_raw.json")),
+    }
+
+
+def prd_payload(run: RunState) -> dict[str, Any]:
+    prds = _load_json(run, "prds.json").get("prds", [])
+    return {
+        **_base(run, bool(prds)),
+        "prds": prds,
+        "validation": _load_json(run, "prd_validation.json"),
+        "raw": _raw_metadata(_load_json(run, "prd_generation_raw.json")),
+    }
+
+
+def test_cases_payload(run: RunState) -> dict[str, Any]:
+    test_cases = _load_json(run, "test_cases.json").get("test_cases", [])
+    return {
+        **_base(run, bool(test_cases)),
+        "test_cases": test_cases,
+        "validation": _load_json(run, "test_case_validation.json"),
+        "coverage": _load_json(run, "test_coverage.json"),
+        "raw": _raw_metadata(_load_json(run, "test_case_generation_raw.json")),
+    }
+
+
+def traceability_payload(run: RunState) -> dict[str, Any]:
+    reviews = reviews_payload(run).get("reviews", [])
+    topics = topics_payload(run).get("topics", [])
+    issues = issues_payload(run).get("issues", [])
+    findings = findings_payload(run).get("findings", [])
+    requirements = requirements_payload(run).get("requirements", [])
+    roadmap = roadmap_payload(run)
+    prds = prd_payload(run).get("prds", [])
+    test_cases = test_cases_payload(run).get("test_cases", [])
+    validation = _load_json(run, "final_validation_report.json")
+    graph = _traceability_graph(
+        reviews=reviews,
+        topics=topics,
+        issues=issues,
+        findings=findings,
+        requirements=requirements,
+        versions=roadmap.get("versions", []),
+        prds=prds,
+        test_cases=test_cases,
+    )
+    return {
+        **_base(run, bool(validation)),
+        "validation": validation,
+        "graph": graph,
+        "metadata": _model_metadata(validation),
+    }
+
+
+def validation_payload(run: RunState) -> dict[str, Any]:
+    traceability = traceability_payload(run)
+    validation = traceability.get("validation", {})
+    return {
+        **_base(run, bool(validation)),
+        "runtime_validation_status": validation.get("runtime_validation_status", run.runtime_validation_status),
+        "submission_validation_status": validation.get("submission_validation_status", run.submission_validation_status),
+        "submission_blockers": validation.get("submission_blockers", []),
+        "validation": validation,
+        "metadata": traceability.get("metadata", {}),
+    }
+
+
+def _base(run: RunState, available: bool) -> dict[str, Any]:
+    return {
+        "run_id": run.run_id,
+        "available": available,
+        "source": "run_artifact_snapshot",
+        "run_status": run.status,
+    }
+
+
+def _load_json(run: RunState, filename: str) -> dict[str, Any]:
+    artifact_paths = [artifact for stage in run.stages for artifact in stage.artifacts]
+    path = find_run_artifact(run.run_id, artifact_paths, filename)
+    if not path:
+        return {}
+    try:
+        return json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _raw_metadata(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in payload.items()
+        if key
+        in {
+            "generated_at",
+            "retrieved_at",
+            "provider",
+            "model",
+            "phase",
+            "is_mock",
+            "analysis_goal",
+            "generation_status",
+            "status",
+            "response_metadata",
+        }
+    }
+
+
+def _decorate_issues(
+    issues: list[dict[str, Any]],
+    classifications: list[dict[str, Any]],
+    eligibility: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    types = {item.get("issue_id"): item.get("issue_type") for item in classifications}
+    eligible = {item.get("issue_id"): item.get("eligible_for_finding") for item in eligibility}
+    decorated = []
+    for issue in issues:
+        issue_id = issue.get("issue_id")
+        decorated.append(
+            {
+                **issue,
+                "issue_type": issue.get("issue_type") or types.get(issue_id),
+                "eligible_for_finding": eligible.get(issue_id),
+            }
+        )
+    return decorated
+
+
+def _traceability_graph(
+    *,
+    reviews: list[dict[str, Any]],
+    topics: list[dict[str, Any]],
+    issues: list[dict[str, Any]],
+    findings: list[dict[str, Any]],
+    requirements: list[dict[str, Any]],
+    versions: list[dict[str, Any]],
+    prds: list[dict[str, Any]],
+    test_cases: list[dict[str, Any]],
+) -> dict[str, Any]:
+    review_ids = [_text(review.get("id")) for review in reviews if _text(review.get("id"))]
+    topic_to_reviews = {_text(topic.get("topic_id")): _list_text(topic.get("review_ids")) for topic in topics}
+    issue_to_topics = {_text(issue.get("issue_id")): _list_text(issue.get("topic_ids")) for issue in issues}
+    issue_to_reviews = {_text(issue.get("issue_id")): _list_text(issue.get("review_ids")) for issue in issues}
+    finding_to_issues = {
+        _text(finding.get("finding_id")): _list_text(finding.get("issue_ids")) for finding in findings
+    }
+    finding_to_reviews = {
+        _text(finding.get("finding_id")): _list_text(finding.get("review_ids")) for finding in findings
+    }
+    requirement_to_findings = {
+        _text(requirement.get("requirement_id")): _list_text(requirement.get("finding_ids"))
+        for requirement in requirements
+    }
+    version_to_requirements = {
+        _text(version.get("version_id")): _list_text(version.get("requirement_ids")) for version in versions
+    }
+    prd_to_requirements = {_text(prd.get("prd_id")): _list_text(prd.get("requirement_ids")) for prd in prds}
+    test_case_to_requirement = {
+        _text(test_case.get("test_case_id")): _text(test_case.get("requirement_id")) for test_case in test_cases
+    }
+    return {
+        "review_ids": review_ids,
+        "topic_to_reviews": topic_to_reviews,
+        "issue_to_topics": issue_to_topics,
+        "issue_to_reviews": issue_to_reviews,
+        "finding_to_issues": finding_to_issues,
+        "finding_to_reviews": finding_to_reviews,
+        "requirement_to_findings": requirement_to_findings,
+        "version_to_requirements": version_to_requirements,
+        "prd_to_requirements": prd_to_requirements,
+        "test_case_to_requirement": test_case_to_requirement,
+        "review_to_topics": _invert_many(topic_to_reviews),
+        "topic_to_issues": _invert_many(issue_to_topics),
+        "issue_to_findings": _invert_many(finding_to_issues),
+        "finding_to_requirements": _invert_many(requirement_to_findings),
+        "requirement_to_versions": _invert_many(version_to_requirements),
+        "requirement_to_prds": _invert_many(prd_to_requirements),
+        "requirement_to_test_cases": _invert_one(test_case_to_requirement),
+    }
+
+
+def _model_metadata(validation: dict[str, Any]) -> dict[str, Any]:
+    registry = validation.get("model_registry")
+    if not isinstance(registry, list):
+        return {}
+    models = []
+    for item in registry:
+        if not isinstance(item, dict):
+            continue
+        configuration = item.get("configuration") if isinstance(item.get("configuration"), dict) else {}
+        thinking = configuration.get("thinking")
+        if isinstance(thinking, dict):
+            thinking_value = thinking.get("type")
+        else:
+            thinking_value = thinking
+        models.append(
+            {
+                "task": item.get("task"),
+                "provider": item.get("provider"),
+                "model": item.get("model"),
+                "thinking": thinking_value,
+                "max_tokens": configuration.get("max_tokens"),
+                "temperature": configuration.get("temperature"),
+                "stream": configuration.get("stream"),
+                "timeout_seconds": configuration.get("timeout_seconds"),
+                "response_format": configuration.get("response_format"),
+            }
+        )
+    return {"model_registry": models}
+
+
+def _invert_many(mapping: dict[str, list[str]]) -> dict[str, list[str]]:
+    inverted: dict[str, list[str]] = {}
+    for parent, children in mapping.items():
+        for child in children:
+            inverted.setdefault(child, []).append(parent)
+    return inverted
+
+
+def _invert_one(mapping: dict[str, str]) -> dict[str, list[str]]:
+    inverted: dict[str, list[str]] = {}
+    for parent, child in mapping.items():
+        if child:
+            inverted.setdefault(child, []).append(parent)
+    return inverted
+
+
+def _list_text(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [_text(item) for item in value if _text(item)]
+
+
+def _text(value: Any) -> str:
+    return value.strip() if isinstance(value, str) else ""
