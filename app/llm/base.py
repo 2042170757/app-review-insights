@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Protocol
+from dataclasses import dataclass, field
+from typing import Any, Protocol
 
 
 @dataclass(frozen=True)
@@ -18,6 +18,7 @@ class LLMResponse:
     raw_text: str
     provider: str
     model: str | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 class LLMProvider(Protocol):
@@ -38,3 +39,10 @@ class ModelRequestError(RuntimeError):
 class ModelTimeoutError(ModelRequestError):
     """Raised when the model request times out."""
 
+
+class ModelAuthenticationError(ModelRequestError):
+    """Raised when the model provider rejects authentication or authorization."""
+
+
+class ModelRateLimitError(ModelRequestError):
+    """Raised when the model provider rate limits the request."""

@@ -5,7 +5,7 @@ from tempfile import TemporaryDirectory
 
 from app.llm.base import LLMRequest, ModelRequestError, ModelTimeoutError
 from app.llm.mock_provider import MockLLMProvider
-from app.topic_discovery import build_topic_request, discover_topics, load_processed_reviews
+from app.topic_discovery import build_topic_request, discover_topics, extract_json_text, load_processed_reviews
 
 
 class TopicDiscoveryTests(unittest.TestCase):
@@ -169,7 +169,8 @@ class TopicDiscoveryTests(unittest.TestCase):
             result = discover_topics(_reviews(), analysis_goal="Goal", provider=FailingProvider(), output_dir=Path(temp_dir))
 
         self.assertFalse(result.passed)
-        self.assertEqual(result.status, "Model Request Failed")
+        self.assertEqual(result.status, "Model Request Error")
+        self.assertEqual(result.validation.status, "SKIPPED")
 
     def test_timeout(self) -> None:
         class TimeoutProvider:
@@ -183,6 +184,7 @@ class TopicDiscoveryTests(unittest.TestCase):
 
         self.assertFalse(result.passed)
         self.assertEqual(result.status, "Timeout")
+        self.assertEqual(result.validation.status, "SKIPPED")
 
     def test_load_processed_reviews(self) -> None:
         with TemporaryDirectory() as temp_dir:
@@ -200,6 +202,12 @@ class TopicDiscoveryTests(unittest.TestCase):
         self.assertIn("Do not generate Requirements", request.system_prompt)
         self.assertIn("Do not generate product solutions", request.system_prompt)
         self.assertIn("only Topic discovery", request.system_prompt)
+        self.assertIn("Do not use a predefined Topic list", request.system_prompt)
+
+    def test_markdown_fenced_json_is_extracted(self) -> None:
+        raw_text = '```json\n{"topics": []}\n```'
+
+        self.assertEqual(extract_json_text(raw_text), '{"topics": []}')
 
 
 def _reviews() -> list[dict]:
@@ -225,4 +233,3 @@ def _reviews() -> list[dict]:
 
 if __name__ == "__main__":
     unittest.main()
-

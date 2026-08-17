@@ -3,11 +3,19 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
 
-from app.llm.base import MissingAPIKeyError, ModelRequestError
+from app.llm.base import (
+    MissingAPIKeyError,
+    ModelAuthenticationError,
+    ModelRateLimitError,
+    ModelRequestError,
+    ModelTimeoutError,
+)
+from app.llm.deepseek_provider import DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL
 from app.llm.provider import build_production_provider
 from app.topic_discovery import (
     DEFAULT_ANALYSIS_DIR,
@@ -27,12 +35,55 @@ def main() -> int:
 
     load_dotenv(override=False)
     reviews = load_processed_reviews(args.input)
+    provider_name = "deepseek"
+    model_name = os.environ.get(DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL)
     try:
         provider = build_production_provider()
     except MissingAPIKeyError as exc:
-        result = create_failure_result("Missing API Key", args.goal, str(exc), args.output_dir)
+        result = create_failure_result(
+            "Missing API Key",
+            args.goal,
+            str(exc),
+            args.output_dir,
+            provider=provider_name,
+            model=model_name,
+        )
+    except ModelAuthenticationError as exc:
+        result = create_failure_result(
+            "Authentication Error",
+            args.goal,
+            str(exc),
+            args.output_dir,
+            provider=provider_name,
+            model=model_name,
+        )
+    except ModelRateLimitError as exc:
+        result = create_failure_result(
+            "Rate Limit",
+            args.goal,
+            str(exc),
+            args.output_dir,
+            provider=provider_name,
+            model=model_name,
+        )
+    except ModelTimeoutError as exc:
+        result = create_failure_result(
+            "Timeout",
+            args.goal,
+            str(exc),
+            args.output_dir,
+            provider=provider_name,
+            model=model_name,
+        )
     except ModelRequestError as exc:
-        result = create_failure_result("Model Request Failed", args.goal, str(exc), args.output_dir)
+        result = create_failure_result(
+            "Model Request Error",
+            args.goal,
+            str(exc),
+            args.output_dir,
+            provider=provider_name,
+            model=model_name,
+        )
     else:
         result = discover_topics(
             reviews,
@@ -43,6 +94,8 @@ def main() -> int:
 
     if result.passed:
         print("Topic Discovery: PASS")
+        print(f"Provider: {result.provider}")
+        print(f"Model: {result.model}")
         print(f"Topic Count: {len(result.topics)}")
         print("Validation: PASS")
         for topic in result.topics:
@@ -57,10 +110,12 @@ def main() -> int:
         return 0
 
     print("Topic Discovery: FAIL")
+    print(f"Provider: {result.provider}")
+    print(f"Model: {result.model}")
     print(f"Failure Type: {result.status}")
-    print("Validation: FAIL")
     if result.error:
-        print(f"Error: {result.error}")
+        print(f"Message: {result.error}")
+    print(f"Validation: {result.validation.status}")
     for error in result.validation.errors:
         print(f"- {error}")
     print("Output files:")
