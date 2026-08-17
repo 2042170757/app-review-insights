@@ -50,6 +50,9 @@ Rules:
 16. Do not generate Roadmaps.
 17. Do not generate PRDs.
 18. Do not generate Test Cases.
+19. review_ids are supporting evidence. conflicting_review_ids are counter-evidence. The same review_id must never appear in both lists for the same Finding.
+20. If a review partly supports the finding but has positive sentiment, keep it only in review_ids and explain the mixed sentiment in uncertainty. Do not duplicate it into conflicting_review_ids.
+21. Use conflicting_review_ids only for reviews that contradict the Finding and are not included in review_ids.
 
 Return only JSON matching the required Finding schema."""
 
@@ -207,6 +210,7 @@ def build_finding_request(
                     }
                 ]
             },
+            "evidence_partition_rule": "For each Finding, review_ids and conflicting_review_ids must be disjoint. Do not put the same review_id in both lists. Mixed or mildly positive support reviews stay in review_ids only; explain their nuance in uncertainty.",
         },
         ensure_ascii=False,
         indent=2,

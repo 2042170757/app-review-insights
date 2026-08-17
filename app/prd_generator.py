@@ -57,6 +57,10 @@ Rules:
 19. Success Metrics must be measurable but must not invent numeric targets unless provided in the input.
 20. evidence_summary must cite related requirement_id or finding_id values.
 21. If a Version includes required_open_questions, every listed product decision must be represented in that PRD's open_questions.
+22. Analysis Goal is overall context only; it must not override any Version goal.
+23. For each PRD, the first item in goals must exactly match that Version's required_prd_goal.
+24. Every PRD must include at least one open question about evidence uncertainty, scope, metrics, or a product decision.
+25. Every success metric must be observable and measurable: phrase it with rate, count, time, retention, conversion, decrease, increase, reduction, complaints, reviews, or a numeric unit. Do not use vague wording such as "improved user experience" or "improved trust" as a standalone metric.
 
 Return only JSON matching the existing PRD schema."""
 
@@ -218,6 +222,7 @@ def build_prd_request(
                 "version_id": version_id,
                 "name": version.get("name"),
                 "goal": version.get("goal"),
+                "required_prd_goal": version.get("goal"),
                 "requirement_ids": requirement_ids,
                 "rationale": version.get("rationale"),
                 "risks": version.get("risks"),
@@ -250,10 +255,13 @@ def build_prd_request(
                 ]
             },
             "open_question_guidance": {
+                "all_prds": "Every PRD must include at least one open question. If no specific requirement question is listed, include a product-scope, evidence-uncertainty, or metric-definition question.",
                 "REQ-001": "The exact free access proportion or threshold should remain an open question if not evidence-backed.",
                 "REQ-007": "The content refresh cadence, frequency, or timing should remain an open question if not evidence-backed.",
                 "REQ-008": "The specific support channels should remain an open question if not evidence-backed.",
             },
+            "goal_alignment_rule": "For each PRD, goals[0] must exactly equal the matching validated_versions[].required_prd_goal. Additional goals may expand that Version goal but must not replace it.",
+            "success_metric_rule": "Every success metric must be phrased as an observable metric using rate, count, time, retention, conversion, decrease, increase, reduction, complaints, reviews, or a numeric unit. Avoid vague standalone metrics such as improved trust, improved user experience, or better satisfaction.",
         },
         ensure_ascii=False,
         indent=2,
@@ -390,6 +398,8 @@ def _open_questions_for_requirements(requirement_ids: list[str]) -> list[str]:
         questions.append("Confirm the content refresh cadence with the product team.")
     if "REQ-008" in requirement_ids:
         questions.append("Confirm which support channels are appropriate for users.")
+    if not questions:
+        questions.append("Confirm the final product scope and success metric definitions before delivery.")
     return questions
 
 

@@ -117,6 +117,8 @@ class RunState:
     storefront: str | None = None
     app_id: str | None = None
     total_elapsed_seconds: float | None = None
+    runtime_validation_status: str = "pending"
+    submission_validation_status: str = "pending"
 
     def __post_init__(self) -> None:
         if self.status not in VALID_RUN_STATUSES:

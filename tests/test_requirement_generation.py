@@ -47,6 +47,20 @@ class RequirementGenerationTests(unittest.TestCase):
         self.assertEqual(provider.requests[0].analysis_goal, "custom analysis goal")
         self.assertIn("custom analysis goal", provider.requests[0].user_prompt)
 
+    def test_requirement_request_carries_prohibited_word_rule(self) -> None:
+        request = build_requirement_request(
+            findings=_findings(),
+            evidence_report=_evidence_report(),
+            analysis_goal="goal",
+        )
+        payload = json.loads(request.user_prompt)
+
+        self.assertIn("prohibited_word_rule", payload)
+        self.assertIn("functional", payload["prohibited_word_rule"]["terms"])
+        self.assertIn("database", payload["prohibited_word_rule"]["terms"])
+        self.assertIn("working", payload["prohibited_word_rule"]["instruction"])
+        self.assertIn("Never use these prohibited words", request.system_prompt)
+
     def test_unknown_finding(self) -> None:
         result = _generate(_raw_requirements([_requirement(finding_ids=["FINDING-MISSING"])]))
 

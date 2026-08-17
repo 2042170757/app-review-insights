@@ -181,6 +181,20 @@ class FindingGenerationTests(unittest.TestCase):
         self.assertNotIn("ISSUE-007", request.user_prompt)
         self.assertIn("Evidence-Grounded Finding Generation", request.system_prompt)
 
+    def test_build_finding_request_keeps_support_and_conflicts_disjoint(self) -> None:
+        request = build_finding_request(
+            reviews=_reviews(),
+            issues=_issues(),
+            classifications=_classifications(),
+            eligibility=_eligibility(),
+            analysis_goal="Goal",
+        )
+        payload = json.loads(request.user_prompt)
+
+        self.assertIn("evidence_partition_rule", payload)
+        self.assertIn("review_ids and conflicting_review_ids must be disjoint", payload["evidence_partition_rule"])
+        self.assertIn("must never appear in both lists", request.system_prompt)
+
 
 def _run(payload: dict):
     provider = MockLLMProvider(json.dumps(payload))

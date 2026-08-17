@@ -50,6 +50,8 @@ Rules:
 15. If evidence is weak, reflect that in uncertainty.
 16. One Finding can produce zero, one, or multiple Requirements.
 17. If a Finding does not support a clear Requirement, omit it.
+18. Never use these prohibited words or substrings anywhere in a Requirement: function, functions, functionality, functional, API, endpoint, database, code, class, component, React, Vue.
+19. Use product-behavior wording instead: write "working close button" instead of "functional close button", "exercise catalog" instead of "exercise database", and "product behavior" or "capability" instead of "functionality".
 
 Return only JSON matching the required Requirement schema."""
 
@@ -212,6 +214,23 @@ def build_requirement_request(
                 ]
             },
             "priority_note": "Model priority is advisory only; deterministic priority engine will assign final priority.",
+            "prohibited_word_rule": {
+                "terms": [
+                    "function",
+                    "functions",
+                    "functionality",
+                    "functional",
+                    "API",
+                    "endpoint",
+                    "database",
+                    "code",
+                    "class",
+                    "component",
+                    "React",
+                    "Vue",
+                ],
+                "instruction": "Do not use these words or substrings anywhere in title, description, acceptance_criteria, priority_rationale, risks, success_metrics, or uncertainty. Use product-behavior alternatives such as working, capability, catalog, content set, experience, or product behavior.",
+            },
         },
         ensure_ascii=False,
         indent=2,

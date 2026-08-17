@@ -50,6 +50,9 @@ Rules:
 16. Do not generate PRDs.
 17. Consider underlying user problem, causal relationship, user intent, symptom similarity, and evidence overlap.
 18. Do not merge only because Topics share keywords, app features, sentiment, or ratings.
+19. Preserve traceability for every input Topic: every Topic must appear in at least one Issue topic_ids entry.
+20. If a Topic is positive feedback, neutral observation, or otherwise not a product problem, still create a single-Topic Issue that preserves the Topic and its Review Evidence; deterministic classification and Finding Eligibility will decide whether it can proceed to Findings.
+21. Use unmerged_topic_ids only when the input Topic cannot be represented with valid Review Evidence. Do not use unmerged_topic_ids for ordinary distinct Topics.
 
 Return only JSON matching the required issue schema."""
 
@@ -166,6 +169,7 @@ def build_issue_request(
                 ],
                 "unmerged_topic_ids": ["TOPIC-002"],
             },
+            "traceability_rule": "Every valid_topic_id must appear in at least one issue.topic_ids entry. Use single-Topic Issues for distinct, positive, neutral, or non-problem Topics so later deterministic classification can preserve or filter them. Leave unmerged_topic_ids empty unless a Topic cannot be represented with valid Review Evidence.",
         },
         ensure_ascii=False,
         indent=2,

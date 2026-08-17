@@ -34,6 +34,7 @@ from app.workflow.stages import (
     VALID_ERROR_TYPES,
     WORKFLOW_STAGE_IDS,
 )
+from app.workflow.validation import VALIDATION_FAIL
 
 
 class WorkflowInputError(ValueError):
@@ -178,6 +179,7 @@ class WorkflowOrchestrator:
             stage.warnings = list(warnings or [])
             stage.summary = dict(summary or {})
             stage.elapsed_seconds = elapsed_seconds
+            _apply_validation_summary(run, stage.summary)
             for warning in stage.warnings:
                 run.warnings.append(WorkflowWarning(stage=stage_id, type="stage_warning", message=warning))
             if all(item.status == STATUS_COMPLETED for item in run.stages):
@@ -214,6 +216,7 @@ class WorkflowOrchestrator:
                 }
             ]
             run.status = RUN_FAILED
+            run.runtime_validation_status = VALIDATION_FAIL
             run.current_stage = stage_id
             run.errors.append(
                 WorkflowError(
@@ -291,6 +294,7 @@ class WorkflowOrchestrator:
                         failed_stage.artifacts = exc.artifacts
                         failed_stage.warnings = exc.warnings
                         failed_stage.summary = exc.summary
+                        _apply_validation_summary(self.get_run(run_id), failed_stage.summary)
                     break
                 except Exception as exc:
                     self.mark_stage_failed(
@@ -380,6 +384,15 @@ def _skip_stages_after(run: RunState, stage_id: str) -> None:
             stage.completed_at = now_utc()
         if stage.stage == stage_id:
             should_skip = True
+
+
+def _apply_validation_summary(run: RunState, summary: dict[str, object]) -> None:
+    runtime_status = summary.get("runtime_validation_status")
+    submission_status = summary.get("submission_validation_status")
+    if isinstance(runtime_status, str) and runtime_status:
+        run.runtime_validation_status = runtime_status
+    if isinstance(submission_status, str) and submission_status:
+        run.submission_validation_status = submission_status
 
 
 def create_input_error(stage: str | None, message: str) -> WorkflowError:

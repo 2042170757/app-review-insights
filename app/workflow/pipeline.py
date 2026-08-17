@@ -35,6 +35,7 @@ from app.workflow.stages import (
     STAGE_TOPIC_DISCOVERY,
     STAGE_TRACEABILITY,
 )
+from app.workflow.validation import VALIDATION_PASS, split_final_validation_report
 
 
 ANALYSIS_DIR = Path("artifacts/analysis")
@@ -49,6 +50,7 @@ FINDING_STAGE_GOAL = (
 REQUIREMENT_STAGE_GOAL = (
     "基于已验证 Findings 生成证据驱动的产品需求；只描述用户可感知的产品行为，"
     "不要描述技术实现、函数、接口、数据库、代码或框架。"
+    "Use product behavior wording only; never use the words function, functions, functionality, API, endpoint, database, code, class, component, React, or Vue."
 )
 ROADMAP_STAGE_GOAL = "基于已验证 Requirements、优先级与证据报告生成版本路线图。"
 PRD_STAGE_GOAL = "基于已验证 Roadmap Version、Requirements、Findings 与 Evidence 生成 PRD。"
@@ -363,24 +365,30 @@ class BackendPipelineRunner:
             ) from exc
         report_path = ANALYSIS_DIR / "final_validation_report.json"
         ANALYSIS_DIR.mkdir(parents=True, exist_ok=True)
-        report_path.write_text(json.dumps(result.to_dict(), ensure_ascii=False, indent=2), encoding="utf-8")
-        summary = _traceability_summary(result.to_dict())
+        report = result.to_dict()
+        validation_split = split_final_validation_report(report)
+        report["runtime_validation_status"] = validation_split.runtime_validation_status
+        report["submission_validation_status"] = validation_split.submission_validation_status
+        report["submission_blockers"] = validation_split.submission_blockers
+        report_path.write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
+        summary = _traceability_summary(report)
         artifacts = [str(report_path)]
-        if result.downstream_safety != "PASS":
-            issues = result.critical_issues + [f"Missing final deliverable: {item}" for item in result.missing_final_deliverables]
+        warnings = result.non_blocking_issues + validation_split.warnings
+        if validation_split.runtime_validation_status != VALIDATION_PASS:
             raise WorkflowStageExecutionError(
                 stage=STAGE_TRACEABILITY,
                 error_type=ERROR_VALIDATION,
-                message="Final traceability validation did not pass.\n" + "\n".join(f"- {item}" for item in issues),
+                message="Runtime traceability validation did not pass.\n"
+                + "\n".join(f"- {item}" for item in validation_split.runtime_errors),
                 artifacts=artifacts,
-                warnings=result.non_blocking_issues,
+                warnings=warnings,
                 summary=summary,
             )
         return WorkflowStageExecutionResult(
             stage=STAGE_TRACEABILITY,
             message="Final traceability validation completed.",
             artifacts=artifacts,
-            warnings=result.non_blocking_issues,
+            warnings=warnings,
             summary=summary,
         )
 
@@ -547,6 +555,9 @@ def _traceability_summary(report: dict[str, Any]) -> dict[str, Any]:
         "generalization": report.get("generalization"),
         "exam_requirement_coverage": report.get("exam_requirement_coverage"),
         "downstream_safety": report.get("downstream_safety"),
+        "runtime_validation_status": report.get("runtime_validation_status"),
+        "submission_validation_status": report.get("submission_validation_status"),
+        "submission_blockers": report.get("submission_blockers", []),
         "critical_issue_count": len(report.get("critical_issues", [])),
         "missing_final_deliverable_count": len(report.get("missing_final_deliverables", [])),
         "counts": report.get("counts", {}),

@@ -197,6 +197,15 @@ class IssueConsolidationTests(unittest.TestCase):
         self.assertIn("unmerged_topic_ids", request.user_prompt)
         self.assertIn("Issue Consolidation", request.system_prompt)
 
+    def test_build_issue_request_preserves_every_topic_for_traceability(self) -> None:
+        request = build_issue_request(_reviews(), _topics())
+        payload = json.loads(request.user_prompt)
+
+        self.assertIn("traceability_rule", payload)
+        self.assertIn("Every valid_topic_id must appear", payload["traceability_rule"])
+        self.assertIn("single-Topic Issues", payload["traceability_rule"])
+        self.assertIn("Preserve traceability for every input Topic", request.system_prompt)
+
     def test_loaders(self) -> None:
         with TemporaryDirectory() as temp_dir:
             reviews_path = Path(temp_dir) / "reviews.json"
