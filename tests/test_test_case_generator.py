@@ -1,10 +1,14 @@
 import json
+import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from app.llm.base import LLMRequest, LLMResponse, ModelRequestError, ModelTimeoutError
 from app.test_case_generator import (
+    DEFAULT_TEST_CASE_MAX_TOKENS,
+    DEEPSEEK_TEST_CASE_MAX_TOKENS,
     build_default_mock_output,
     build_test_case_request,
     create_mock_provider,
@@ -125,6 +129,41 @@ class TestCaseGeneratorTests(unittest.TestCase):
             "REQ-001-AC-1",
         )
         self.assertEqual(payload["validated_requirements"][0]["prd_scope"][0]["prd_id"], "PRD-V1")
+        self.assertEqual(request.generation_options["task"], "test_case_generation")
+        self.assertEqual(request.generation_options["max_tokens"], DEFAULT_TEST_CASE_MAX_TOKENS)
+
+    def test_test_case_max_tokens_can_be_overridden_from_env(self) -> None:
+        with patch.dict(os.environ, {DEEPSEEK_TEST_CASE_MAX_TOKENS: "4500"}):
+            request = build_test_case_request(
+                requirements=_requirements(),
+                prds=_prds(),
+                roadmap=_roadmap(),
+                analysis_goal="goal",
+            )
+
+        self.assertEqual(request.generation_options["max_tokens"], 4500)
+
+    def test_invalid_test_case_max_tokens_configuration_fails_generation(self) -> None:
+        provider = create_mock_provider(build_default_mock_output(_requirements()))
+
+        with patch.dict(os.environ, {DEEPSEEK_TEST_CASE_MAX_TOKENS: "0"}):
+            with TemporaryDirectory() as temp_dir:
+                result = generate_test_cases(
+                    requirements=_requirements(),
+                    requirement_validation=_pass_validation(),
+                    prd_validation=_pass_validation(),
+                    prds=_prds(),
+                    roadmap=_roadmap(),
+                    findings=_findings(),
+                    reviews=_reviews(),
+                    provider=provider,
+                    output_dir=Path(temp_dir),
+                )
+
+        self.assertFalse(result.generation_passed)
+        self.assertEqual(result.generation_status, "Model Request Error")
+        self.assertEqual(result.validation.status, "SKIPPED")
+        self.assertEqual(provider.requests, [])
 
     def test_save_outputs_marks_mock(self) -> None:
         provider = create_mock_provider(build_default_mock_output(_requirements()))

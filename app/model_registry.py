@@ -7,6 +7,7 @@ from dataclasses import asdict, dataclass
 from typing import Any
 
 from app.requirement_generation import DEEPSEEK_REQUIREMENT_MAX_TOKENS, DEFAULT_REQUIREMENT_MAX_TOKENS
+from app.test_case_generator import DEEPSEEK_TEST_CASE_MAX_TOKENS, DEFAULT_TEST_CASE_MAX_TOKENS
 
 
 DEFAULT_PROVIDER = "deepseek"
@@ -82,7 +83,16 @@ def build_model_registry(
     for task in MODEL_DRIVEN_TASKS:
         configuration = dict(default_configuration)
         if task == "Requirement Generation":
-            configuration["max_tokens"] = _requirement_max_tokens()
+            configuration["max_tokens"] = _task_max_tokens(
+                DEEPSEEK_REQUIREMENT_MAX_TOKENS,
+                DEFAULT_REQUIREMENT_MAX_TOKENS,
+            )
+            configuration["default_max_tokens"] = default_configuration["max_tokens"]
+        if task == "Test Case Generation":
+            configuration["max_tokens"] = _task_max_tokens(
+                DEEPSEEK_TEST_CASE_MAX_TOKENS,
+                DEFAULT_TEST_CASE_MAX_TOKENS,
+            )
             configuration["default_max_tokens"] = default_configuration["max_tokens"]
         registrations.append(
             ModelTaskRegistration(
@@ -95,15 +105,15 @@ def build_model_registry(
     return registrations
 
 
-def _requirement_max_tokens() -> int:
-    raw_value = os.environ.get(DEEPSEEK_REQUIREMENT_MAX_TOKENS)
+def _task_max_tokens(env_name: str, default: int) -> int:
+    raw_value = os.environ.get(env_name)
     if raw_value is None or raw_value.strip() == "":
-        return DEFAULT_REQUIREMENT_MAX_TOKENS
+        return default
     try:
         value = int(raw_value)
     except ValueError:
-        return DEFAULT_REQUIREMENT_MAX_TOKENS
-    return value if value > 0 else DEFAULT_REQUIREMENT_MAX_TOKENS
+        return default
+    return value if value > 0 else default
 
 
 def audit_ai_deterministic_boundary() -> dict[str, Any]:

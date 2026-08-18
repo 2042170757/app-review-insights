@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -32,6 +33,8 @@ from app.topic_discovery import extract_json_text
 
 STATUS_SUCCESS = "Success"
 STATUS_INPUT_VALIDATION_FAILED = "Input Validation Failed"
+DEEPSEEK_TEST_CASE_MAX_TOKENS = "DEEPSEEK_TEST_CASE_MAX_TOKENS"
+DEFAULT_TEST_CASE_MAX_TOKENS = 5000
 
 
 SYSTEM_PROMPT = """You are generating executable Test Cases from validated Requirements and Acceptance Criteria.
@@ -110,12 +113,15 @@ def generate_test_cases(
             is_mock,
         )
 
-    request = build_test_case_request(
-        requirements=requirements,
-        prds=prds or [],
-        roadmap=roadmap or {},
-        analysis_goal=analysis_goal,
-    )
+    try:
+        request = build_test_case_request(
+            requirements=requirements,
+            prds=prds or [],
+            roadmap=roadmap or {},
+            analysis_goal=analysis_goal,
+        )
+    except ModelRequestError as exc:
+        return create_failure_result("Model Request Error", str(exc), requirements, provider, analysis_goal, output_dir, is_mock)
     try:
         response = provider.generate(request)
     except MissingAPIKeyError as exc:
@@ -234,7 +240,15 @@ def build_test_case_request(
         ensure_ascii=False,
         indent=2,
     )
-    return LLMRequest(system_prompt=SYSTEM_PROMPT, user_prompt=user_prompt, analysis_goal=analysis_goal)
+    return LLMRequest(
+        system_prompt=SYSTEM_PROMPT,
+        user_prompt=user_prompt,
+        analysis_goal=analysis_goal,
+        generation_options={
+            "task": "test_case_generation",
+            "max_tokens": _test_case_max_tokens_from_env(),
+        },
+    )
 
 
 def build_default_mock_output(requirements: list[dict[str, Any]]) -> str:
@@ -387,3 +401,16 @@ def _list_text(value: Any) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item.strip() for item in value if isinstance(item, str) and item.strip()]
+
+
+def _test_case_max_tokens_from_env() -> int:
+    raw_value = os.environ.get(DEEPSEEK_TEST_CASE_MAX_TOKENS)
+    if raw_value is None or raw_value.strip() == "":
+        return DEFAULT_TEST_CASE_MAX_TOKENS
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ModelRequestError(f"Model Request Error: {DEEPSEEK_TEST_CASE_MAX_TOKENS} must be an integer") from exc
+    if value <= 0:
+        raise ModelRequestError(f"Model Request Error: {DEEPSEEK_TEST_CASE_MAX_TOKENS} must be greater than 0")
+    return value
