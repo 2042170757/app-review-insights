@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -155,7 +156,7 @@ def validate_finding_payload(
 
         scope_text = " ".join([title, statement, evidence_summary]).lower()
         for phrase in FORBIDDEN_SCOPE_PHRASES:
-            if phrase in scope_text:
+            if _is_scope_overclaim(scope_text, phrase):
                 scope_errors.append(f"{prefix}: scope overclaim uses forbidden phrase {phrase!r}")
 
         issue_evidence_review_ids: set[str] = set()
@@ -256,6 +257,35 @@ def validate_finding_payload(
 
 def _fail(status: str, errors: list[str]) -> FindingValidationResult:
     return FindingValidationResult(status=status, passed=False, errors=errors)
+
+
+def _is_scope_overclaim(text: str, phrase: str) -> bool:
+    for match in re.finditer(re.escape(phrase), text):
+        start = max(0, match.start() - 48)
+        end = min(len(text), match.end() + 48)
+        context = text[start:end]
+        if _is_scope_limitation_context(context, phrase):
+            continue
+        return True
+    return False
+
+
+def _is_scope_limitation_context(context: str, phrase: str) -> bool:
+    limitation_patterns = [
+        rf"\bmay not represent\s+{re.escape(phrase)}\b",
+        rf"\bmight not represent\s+{re.escape(phrase)}\b",
+        rf"\bdoes not represent\s+{re.escape(phrase)}\b",
+        rf"\bdo not represent\s+{re.escape(phrase)}\b",
+        rf"\bnot represent\s+{re.escape(phrase)}\b",
+        rf"\bnot representative of\s+{re.escape(phrase)}\b",
+        rf"\bcannot represent\s+{re.escape(phrase)}\b",
+        rf"\bnot apply to\s+{re.escape(phrase)}\b",
+        rf"\bdoes not apply to\s+{re.escape(phrase)}\b",
+        rf"\bmay not apply to\s+{re.escape(phrase)}\b",
+    ]
+    if phrase == "all users":
+        limitation_patterns.append(r"\bnot all users\b")
+    return any(re.search(pattern, context) for pattern in limitation_patterns)
 
 
 def _normalize_id_list(value: Any, field_name: str, errors: list[str]) -> list[str]:

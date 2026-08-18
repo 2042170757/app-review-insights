@@ -93,6 +93,23 @@ class FindingGenerationTests(unittest.TestCase):
 
         self.assertEqual(result.validation.status, "Scope Overclaim")
 
+    def test_scope_limitation_is_not_overclaim(self) -> None:
+        result = _run(
+            _payload(
+                evidence_summary=(
+                    "Several reviews support this finding, but the sample is limited "
+                    "and may not represent all users."
+                )
+            )
+        )
+
+        self.assertTrue(result.validation.passed)
+
+    def test_not_all_users_limitation_is_not_overclaim(self) -> None:
+        result = _run(_payload(evidence_summary="Not all users are represented by this limited sample."))
+
+        self.assertTrue(result.validation.passed)
+
     def test_mixed_issue(self) -> None:
         result = _run(_payload(issue_ids=["ISSUE-004"], review_ids=["r4"], support_count=1))
 
