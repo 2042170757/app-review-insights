@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import os
 from dataclasses import asdict, dataclass
 from typing import Any
+
+from app.requirement_generation import DEEPSEEK_REQUIREMENT_MAX_TOKENS, DEFAULT_REQUIREMENT_MAX_TOKENS
 
 
 DEFAULT_PROVIDER = "deepseek"
@@ -67,7 +70,7 @@ def build_model_registry(
     provider: str = DEFAULT_PROVIDER,
     model: str = DEFAULT_MODEL,
 ) -> list[ModelTaskRegistration]:
-    configuration = {
+    default_configuration = {
         "thinking": {"type": "disabled"},
         "max_tokens": 3000,
         "temperature": 0.2,
@@ -75,15 +78,32 @@ def build_model_registry(
         "timeout_seconds": 60,
         "response_format": {"type": "json_object"},
     }
-    return [
-        ModelTaskRegistration(
-            task=task,
-            provider=provider,
-            model=model,
-            configuration=dict(configuration),
+    registrations: list[ModelTaskRegistration] = []
+    for task in MODEL_DRIVEN_TASKS:
+        configuration = dict(default_configuration)
+        if task == "Requirement Generation":
+            configuration["max_tokens"] = _requirement_max_tokens()
+            configuration["default_max_tokens"] = default_configuration["max_tokens"]
+        registrations.append(
+            ModelTaskRegistration(
+                task=task,
+                provider=provider,
+                model=model,
+                configuration=configuration,
+            )
         )
-        for task in MODEL_DRIVEN_TASKS
-    ]
+    return registrations
+
+
+def _requirement_max_tokens() -> int:
+    raw_value = os.environ.get(DEEPSEEK_REQUIREMENT_MAX_TOKENS)
+    if raw_value is None or raw_value.strip() == "":
+        return DEFAULT_REQUIREMENT_MAX_TOKENS
+    try:
+        value = int(raw_value)
+    except ValueError:
+        return DEFAULT_REQUIREMENT_MAX_TOKENS
+    return value if value > 0 else DEFAULT_REQUIREMENT_MAX_TOKENS
 
 
 def audit_ai_deterministic_boundary() -> dict[str, Any]:
