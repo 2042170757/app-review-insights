@@ -59,6 +59,68 @@ class IssueTypeTests(unittest.TestCase):
         self.assertEqual(result.issue_id, "ISSUE-007")
         self.assertEqual(result.issue_type, ISSUE_TYPE_POSITIVE_FEEDBACK)
 
+    def test_not_a_product_problem_positive_feedback_is_not_mixed(self) -> None:
+        result = classify_issue(
+            _issue(
+                issue_id="ISSUE-012",
+                name="Positive feedback and appreciation",
+                description="Users express overall satisfaction with the app, praising its usefulness and content.",
+                merge_rationale=(
+                    "All reviews in this topic are positive feedback and appreciation for the app. "
+                    "This is not a product problem but is preserved for deterministic classification."
+                ),
+                uncertainty="High confidence as many reviews are clearly positive.",
+            )
+        )
+
+        self.assertEqual(result.issue_type, ISSUE_TYPE_POSITIVE_FEEDBACK)
+
+    def test_no_issue_here_is_neutral_not_problem(self) -> None:
+        result = classify_issue(
+            _issue(
+                name="No issue context",
+                description="There is no issue here; the review only describes normal use.",
+                merge_rationale="This is an observation without user friction.",
+                uncertainty="Neutral observation.",
+            )
+        )
+
+        self.assertEqual(result.issue_type, ISSUE_TYPE_NEUTRAL_OBSERVATION)
+
+    def test_not_complaining_positive_feedback_is_positive(self) -> None:
+        result = classify_issue(
+            _issue(
+                name="Positive resource feedback",
+                description="The user is not complaining and says this is a great resource.",
+                merge_rationale="Positive feedback without a product problem.",
+                uncertainty="Clear positive sentiment.",
+            )
+        )
+
+        self.assertEqual(result.issue_type, ISSUE_TYPE_POSITIVE_FEEDBACK)
+
+    def test_real_problem_context_still_classifies_as_problem(self) -> None:
+        result = classify_issue(
+            _issue(
+                name="Cancellation problem",
+                description="I have a problem cancelling and billing keeps failing.",
+                merge_rationale="The issue describes cancellation and billing failure.",
+            )
+        )
+
+        self.assertEqual(result.issue_type, ISSUE_TYPE_PROBLEM)
+
+    def test_crash_context_still_classifies_as_problem(self) -> None:
+        result = classify_issue(
+            _issue(
+                name="App crashes",
+                description="The app crashes during article browsing.",
+                merge_rationale="The issue describes a real stability failure.",
+            )
+        )
+
+        self.assertEqual(result.issue_type, ISSUE_TYPE_PROBLEM)
+
     def test_lack_of_targeted_results_is_problem_not_positive_feedback(self) -> None:
         result = classify_issue(
             _issue(
