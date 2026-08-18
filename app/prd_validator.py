@@ -686,6 +686,11 @@ def _is_measurable_metric(value: str) -> bool:
         return False
     if re.fullmatch(r"(提高|提升|改善|增强)(用户体验|用户满意度|满意度|参与度|留存)\。?", normalized):
         return False
+    if re.search(
+        r"\b(user\s+)?(adoption|usage|engagement)\s+(of|with|for|among)\s+[\w -]+",
+        normalized,
+    ):
+        return True
     return bool(
         re.search(
             r"\d|%|percentage|ratio|rate|count|number|score|rating|survey|user-reported|time|duration|average|median|completion|retention|conversion|increase|decrease|reduction|complaints|reports|incidents|reviews",

@@ -45,6 +45,20 @@ class PRDSuccessMetricsTests(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertEqual(result.status, STATUS_SUCCESS_METRIC_INVALID)
 
+    def test_specific_adoption_metric_passes(self) -> None:
+        payload = _payload(success_metrics=["User adoption of the export feature."])
+
+        result = _validate(payload)
+
+        self.assertTrue(result.passed)
+
+    def test_specific_engagement_metric_passes(self) -> None:
+        payload = _payload(success_metrics=["User engagement with personalized plans."])
+
+        result = _validate(payload)
+
+        self.assertTrue(result.passed)
+
     def test_metric_definition_missing_fails(self) -> None:
         payload = _payload(success_metrics=["Subscription clarity"])
 
