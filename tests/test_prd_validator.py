@@ -258,6 +258,20 @@ class PRDValidatorTests(unittest.TestCase):
         self.assertFalse(result.passed)
         self.assertEqual(result.status, STATUS_PROHIBITED_IMPLEMENTATION_DETAIL)
 
+    def test_verification_code_product_context_is_allowed(self) -> None:
+        payload = _payload()
+        payload["prds"][0]["problem_statement"] = (
+            "Users report login failures when email verification code delivery is delayed."
+        )
+        payload["prds"][0]["evidence_summary"] = (
+            "Evidence from FINDING-001 and REQ-001 describes account recovery and verification code delays."
+        )
+        payload["prds"][0]["goals"].append("Ensure verification codes are delivered promptly for account recovery.")
+
+        result = _validate(payload)
+
+        self.assertTrue(result.passed)
+
     def test_open_question_allowed(self) -> None:
         payload = _payload()
         payload["prds"][0]["open_questions"] = ["Confirm the free access threshold."]

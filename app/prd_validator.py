@@ -652,9 +652,27 @@ def _contains_technical_detail(value: str) -> bool:
             if term in normalized:
                 return True
             continue
-        if re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", normalized):
+        for match in re.finditer(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", normalized):
+            if _is_product_context_for_technical_term(normalized, term, match.start(), match.end()):
+                continue
             return True
     return False
+
+
+def _is_product_context_for_technical_term(value: str, term: str, start: int, end: int) -> bool:
+    if term != "code":
+        return False
+    context = value[max(0, start - 40) : min(len(value), end + 40)]
+    return bool(
+        re.search(
+            r"\b(email|verification|login|account|recovery|one-time|otp|2fa|two-factor)\s+code(s)?\b",
+            context,
+        )
+        or re.search(
+            r"\bcode(s)?\s+(delivery|arrive|arrives|sent|received|expires|expired)\b",
+            context,
+        )
+    )
 
 
 def _is_measurable_metric(value: str) -> bool:
