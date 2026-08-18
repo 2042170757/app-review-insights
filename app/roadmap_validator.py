@@ -32,6 +32,9 @@ STATUS_UNSUPPORTED_PRODUCT_DIRECTION = "Unsupported Product Direction"
 STATUS_DEPENDENCY_CHANGED = "Dependency Changed"
 
 VERSION_ORDER = {"V1": 1, "V2": 2, "V3": 3, "Deferred": 4}
+ALLOWED_VERSION_IDS = set(VALID_VERSION_IDS)
+SCHEDULED_VERSION_IDS = {"V1", "V2", "V3"}
+DEFERRED_VERSION_ID = "Deferred"
 
 
 @dataclass
@@ -328,8 +331,10 @@ def _parse_versions(raw_versions: list[Any]) -> tuple[list[Version], list[str]]:
             errors.append(f"{prefix}.version_id: required")
         elif version_id in seen:
             errors.append(f"{prefix}.version_id: duplicate {version_id}")
-        elif version_id not in VALID_VERSION_IDS:
+        elif version_id not in ALLOWED_VERSION_IDS:
             errors.append(f"{prefix}.version_id: invalid {version_id}")
+        elif version_id == DEFERRED_VERSION_ID:
+            errors.append(f"{prefix}.version_id: Deferred must be represented with deferred_requirement_ids, not versions[]")
         else:
             seen.add(version_id)
         if not name:

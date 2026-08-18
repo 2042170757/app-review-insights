@@ -26,6 +26,7 @@ from app.roadmap_validator import (
     validate_roadmap_output,
 )
 from app.topic_discovery import extract_json_text
+from app.version_schema import VALID_VERSION_IDS
 
 
 DEFAULT_REQUIREMENTS_PATH = Path("artifacts/analysis/requirements.json")
@@ -34,6 +35,9 @@ DEFAULT_PRIORITY_REPORT_PATH = Path("artifacts/analysis/priority_report.json")
 DEFAULT_EVIDENCE_REPORT_PATH = Path("artifacts/analysis/evidence_report.json")
 DEFAULT_ROADMAP_VALIDATION_PATH = Path("artifacts/analysis/roadmap_validation.json")
 DEFAULT_ROADMAP_GOAL = "分析低评分用户对订阅和价格的主要问题"
+SCHEDULED_VERSION_IDS = ["V1", "V2", "V3"]
+DEFERRED_VERSION_ID = "Deferred"
+ALLOWED_VERSION_IDS = sorted(VALID_VERSION_IDS)
 
 
 SYSTEM_PROMPT = """You are performing product-oriented Roadmap Planning from validated Requirements.
@@ -63,6 +67,11 @@ Rules:
 22. Generate Roadmap content only within the scope supported by the input Requirements, Findings, and Evidence summaries.
 23. Do not introduce unsupported product directions, product capabilities, commercial mechanisms, or implementation ideas such as coupons, discounts, loyalty programs, membership tiers, payment gateways, AI chatbots, referral programs, or reward systems unless the input Requirements explicitly contain that concept.
 24. Version name, goal, rationale, risks, and success_metrics may summarize existing Requirements, but must not create new product scope.
+25. Scheduled roadmap Versions are strictly limited to V1, V2, and V3.
+26. Generate at most 3 scheduled Versions. It is valid to generate only V1, only V1 and V2, or V1 through V3.
+27. Never generate V4, V5, Future, Version-4, or any other scheduled version_id outside V1, V2, and V3.
+28. If a Requirement should not be scheduled in V1, V2, or V3, put its requirement_id in deferred_requirement_ids and explain it in deferred_rationale.
+29. Deferred is not a scheduled Version and must not be used as an executable release after V3.
 
 Return only JSON matching the required Roadmap schema."""
 
@@ -207,6 +216,19 @@ def build_roadmap_request(
             "validated_requirements": requirement_payload,
             "valid_requirement_ids": sorted(item["requirement_id"] for item in requirement_payload),
             "existing_dependencies_by_requirement_id": existing_dependencies_by_requirement_id,
+            "version_id_contract": {
+                "scheduled_version_ids": SCHEDULED_VERSION_IDS,
+                "max_scheduled_version_count": 3,
+                "allowed_version_ids": ALLOWED_VERSION_IDS,
+                "deferred_version_id": DEFERRED_VERSION_ID,
+                "rules": [
+                    "Use only V1, V2, and V3 for scheduled Versions.",
+                    "Generate at most 3 scheduled Versions.",
+                    "Do not generate V4, V5, Future, Version-4, or any other version_id.",
+                    "Use deferred_requirement_ids and deferred_rationale for unscheduled Requirements.",
+                    "Deferred is not an executable scheduled Version.",
+                ],
+            },
             "requirement_type_rule": "For positive_feedback Requirements, version goals and rationales must use preserve, maintain, or strengthen language rather than fix, reduce, or resolve problem language. Only include Version success_metrics that are measurable; otherwise use success_metrics: [].",
             "product_scope_rule": "Version name, goal, rationale, risks, and success_metrics must stay within the validated Requirements and evidence_reports. Do not add coupons, discounts, loyalty programs, membership tiers, payment gateways, AI chatbots, referral programs, reward systems, or other new product directions unless those concepts are explicitly present in the input Requirements.",
             "required_output_schema": {
@@ -233,6 +255,7 @@ def build_roadmap_request(
                 "deferred_requirement_ids": [],
                 "deferred_rationale": {},
             },
+            "version_id_schema_note": "versions[].version_id and roadmap_items[].version_id must use only scheduled IDs V1, V2, or V3. Do not put Deferred in versions[]. Use deferred_requirement_ids for deferred Requirements.",
         },
         ensure_ascii=False,
         indent=2,
