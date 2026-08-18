@@ -260,7 +260,13 @@ def _roadmap() -> dict:
 
 def _requirements() -> list[dict]:
     return [
-        {"requirement_id": "REQ-001", "finding_ids": ["FINDING-001"]},
+        {
+            "requirement_id": "REQ-001",
+            "finding_ids": ["FINDING-001"],
+            "title": "Provide free access options",
+            "description": "Clarify the free access threshold for users.",
+            "acceptance_criteria": ["Free access scope is clear."],
+        },
         {"requirement_id": "REQ-002", "finding_ids": ["FINDING-001"]},
         {"requirement_id": "REQ-003", "finding_ids": ["FINDING-002"]},
     ]

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -232,7 +233,7 @@ def build_prd_request(
                 "rationale": version.get("rationale"),
                 "risks": version.get("risks"),
                 "success_metrics": version.get("success_metrics"),
-                "required_open_questions": _required_open_questions_for_requirements(requirement_ids),
+                "required_open_questions": _required_open_questions_for_requirements(version_requirements),
                 "requirements": version_requirements,
             }
         )
@@ -262,9 +263,7 @@ def build_prd_request(
             },
             "open_question_guidance": {
                 "all_prds": "Every PRD must include at least one open question. If no specific requirement question is listed, include a product-scope, evidence-uncertainty, or metric definition question. If success_metrics is empty, open_questions must ask what measurable success metric or target should be defined.",
-                "REQ-001": "The exact free access proportion or threshold should remain an open question if not evidence-backed.",
-                "REQ-007": "The content refresh cadence, frequency, or timing should remain an open question if not evidence-backed.",
-                "REQ-008": "The specific support channels should remain an open question if not evidence-backed.",
+                "context_rule": "Required open questions are derived from the current Requirement title, description, acceptance criteria, risks, and metrics. Requirement IDs have no built-in product meaning.",
             },
             "goal_alignment_rule": "For each PRD, goals[0] must exactly equal the matching validated_versions[].required_prd_goal. Additional goals may expand that Version goal but must not replace it.",
             "success_metric_rule": "Every success metric must be phrased as an observable metric using rate, count, number, score, rating, survey, user-reported signal, time, percentage, retention, conversion, decrease, increase, reduction, complaints, reports, incidents, reviews, or a numeric unit. A score-based metric is valid only when it names what score or rating is being observed, such as user satisfaction score with workout content. For satisfaction or feedback concepts, prefer user-reported satisfaction/feedback rate/count/score/rating instead of vague satisfaction wording or standalone phrases like user feedback on clarity. Avoid vague standalone metrics such as remains high, remains stable, maintain satisfaction, improved trust, improved user experience, better satisfaction, user feedback on clarity, user satisfaction with support improves, or increase engagement. If the only supported concept is satisfaction or feedback but no score/rating/rate/count/survey/user-reported measurement is defined, do not include it in success_metrics; put the measurement definition in open_questions. Do not copy input success_metrics unless they satisfy this rule. Do not invent target numbers such as 10%, 20%, 30%, or 50% unless those numbers exist in the input. If no reliable metric is supported, return success_metrics: [] and add an open question for metric definition or target.",
@@ -304,6 +303,7 @@ def build_default_mock_output(
         goals = [_text(version.get("goal"))]
         evidence_refs = requirement_ids[:2] + finding_ids[:2]
         success_metrics = _metrics_for_version(version)
+        version_requirements = [requirements_by_id[requirement_id] for requirement_id in requirement_ids]
         prds.append(
             {
                 "prd_id": f"PRD-{version_id}",
@@ -319,7 +319,7 @@ def build_default_mock_output(
                 "requirement_ids": requirement_ids,
                 "risks": list(version.get("risks", [])),
                 "success_metrics": success_metrics,
-                "open_questions": _open_questions_for_prd(requirement_ids, success_metrics),
+                "open_questions": _open_questions_for_prd(version_requirements, success_metrics),
             }
         )
     return json.dumps({"prds": prds}, ensure_ascii=False)
@@ -397,50 +397,99 @@ def _metrics_for_version(version: dict[str, Any]) -> list[str]:
     return []
 
 
-def _open_questions_for_requirements(requirement_ids: list[str]) -> list[str]:
-    questions = []
-    if "REQ-001" in requirement_ids:
-        questions.append("Confirm the product scope for any free access threshold before delivery.")
-    if "REQ-007" in requirement_ids:
-        questions.append("Confirm the content refresh cadence with the product team.")
-    if "REQ-008" in requirement_ids:
-        questions.append("Confirm which support channels are appropriate for users.")
+def _open_questions_for_requirements(requirements: list[dict[str, Any]]) -> list[str]:
+    questions = [decision["question"] for requirement in requirements for decision in _required_open_question_decisions(requirement)]
     if not questions:
         questions.append("Confirm the final product scope and success metric definitions before delivery.")
     return questions
 
 
-def _open_questions_for_prd(requirement_ids: list[str], success_metrics: list[str]) -> list[str]:
-    questions = _open_questions_for_requirements(requirement_ids)
+def _open_questions_for_prd(requirements: list[dict[str, Any]], success_metrics: list[str]) -> list[str]:
+    questions = _open_questions_for_requirements(requirements)
     if not success_metrics and not any("success metric" in question.lower() or "measurable" in question.lower() for question in questions):
         questions.append("What measurable success metric and target should define success for this PRD?")
     return questions
 
 
-def _required_open_questions_for_requirements(requirement_ids: list[str]) -> list[dict[str, str]]:
-    required = []
-    if "REQ-001" in requirement_ids:
-        required.append(
+def _required_open_questions_for_requirements(requirements: list[dict[str, Any]]) -> list[dict[str, str]]:
+    return [
+        {
+            "requirement_id": decision["requirement_id"],
+            "decision": decision["question"],
+        }
+        for requirement in requirements
+        for decision in _required_open_question_decisions(requirement)
+    ]
+
+
+def _required_open_question_decisions(requirement: dict[str, Any]) -> list[dict[str, str]]:
+    requirement_id = _text(requirement.get("requirement_id"))
+    text = " ".join(
+        [
+            _text(requirement.get("title")),
+            _text(requirement.get("description")),
+            " ".join(_list_text(requirement.get("acceptance_criteria"))),
+            " ".join(_list_text(requirement.get("risks"))),
+            " ".join(_list_text(requirement.get("success_metrics"))),
+            _text(requirement.get("uncertainty")),
+        ]
+    ).lower()
+    decisions: list[dict[str, str]] = []
+    if "free" in text and ("threshold" in text or "proportion" in text or "library" in text or "access" in text):
+        decisions.append(
             {
-                "requirement_id": "REQ-001",
-                "decision": "What proportion or threshold of workout library access should remain free?",
+                "requirement_id": requirement_id,
+                "question": "What free access threshold, proportion, or scope should be defined before delivery?",
             }
         )
-    if "REQ-007" in requirement_ids:
-        required.append(
+    if _contains_any_term(text, ["refresh", "cadence", "frequency", "monthly", "update cadence", "content update"]):
+        decisions.append(
             {
-                "requirement_id": "REQ-007",
-                "decision": "When, how often, or on what cadence should workout content refreshes occur?",
+                "requirement_id": requirement_id,
+                "question": "What content refresh cadence, frequency, or timing should be defined before delivery?",
             }
         )
-    if "REQ-008" in requirement_ids:
-        required.append(
+    if _contains_any_term(text, ["support"]) and _contains_any_term(text, ["channel", "channels", "email", "chat", "contact"]):
+        decisions.append(
             {
-                "requirement_id": "REQ-008",
-                "decision": "Which support channels should be offered?",
+                "requirement_id": requirement_id,
+                "question": "Which support channel or contact path should be defined before delivery?",
             }
         )
-    return required
+    if _contains_any_term(text, ["large file", "large files"]) and _contains_any_term(text, ["crash", "crashes", "opening", "open"]):
+        decisions.append(
+            {
+                "requirement_id": requirement_id,
+                "question": "What large file size or crash-free opening threshold should define success?",
+            }
+        )
+    if "export" in text and "format" in text:
+        decisions.append(
+            {
+                "requirement_id": requirement_id,
+                "question": "Which export format or formats should be supported?",
+            }
+        )
+    if _contains_any_term(text, ["notification", "notifications", "reminder", "reminders"]) and _contains_any_term(
+        text, ["late", "duplicate", "on time", "timing", "delivery"]
+    ):
+        decisions.append(
+            {
+                "requirement_id": requirement_id,
+                "question": "What reminder or notification timing and duplication threshold should define success?",
+            }
+        )
+    return decisions
+
+
+def _contains_any_term(text: str, terms: list[str]) -> bool:
+    return any(_contains_term(text, term) for term in terms)
+
+
+def _contains_term(text: str, term: str) -> bool:
+    if " " in term:
+        return term in text
+    return re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", text) is not None
 
 
 def _validation_passed(payload: dict[str, Any]) -> bool:
@@ -466,6 +515,10 @@ def _evidence_reports_by_id(evidence_report: dict[str, Any]) -> dict[str, dict[s
         for report in reports
         if isinstance(report, dict) and isinstance(report.get("finding_id"), str)
     }
+
+
+def _list_text(value: Any) -> list[str]:
+    return [_text(item) for item in value if _text(item)] if isinstance(value, list) else []
 
 
 def _text(value: Any) -> str:

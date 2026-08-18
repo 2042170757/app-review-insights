@@ -219,8 +219,8 @@ def validate_prd_payload(
                 version_mismatch_errors.append(
                     f"{prefix}.requirement_ids: expected {expected_requirement_ids}, got {requirement_ids}"
                 )
-            if goals and not _text_coherent(" ".join(goals), _text(version.get("goal"))):
-                goal_errors.append(f"{prefix}.goals: do not align with version goal {version_id}")
+            if goals and not _goal_matches_version_goal(goals[0], _text(version.get("goal"))):
+                goal_errors.append(f"{prefix}.goals[0]: must exactly match version goal {version_id}")
 
         finding_ids_for_prd: set[str] = set()
         for requirement_id in requirement_ids:
@@ -293,7 +293,8 @@ def validate_prd_payload(
                 )
         _validate_required_open_questions(
             prefix=prefix,
-            requirement_ids=requirement_ids,
+            requirements=[requirements_by_id[requirement_id] for requirement_id in requirement_ids if requirement_id in requirements_by_id],
+            version=version or {},
             open_questions=open_questions,
             errors=missing_open_question_errors,
         )
@@ -444,20 +445,104 @@ def _validate_unsupported_scope(
 def _validate_required_open_questions(
     *,
     prefix: str,
-    requirement_ids: list[str],
+    requirements: list[dict[str, Any]],
+    version: dict[str, Any],
     open_questions: list[str],
     errors: list[str],
 ) -> None:
     question_text = " ".join(open_questions).lower()
-    required_terms_by_requirement = {
-        "REQ-001": ["proportion", "threshold", "free access", "free tier", "library"],
-        "REQ-007": ["cadence", "frequency", "refresh", "update", "monthly"],
-        "REQ-008": ["support channel", "channel", "email", "chat", "support"],
-    }
-    for requirement_id in requirement_ids:
-        terms = required_terms_by_requirement.get(requirement_id)
-        if terms and not any(term in question_text for term in terms):
-            errors.append(f"{prefix}.open_questions: missing product decision question for {requirement_id}")
+    version_text = " ".join(
+        [
+            _text(version.get("name")),
+            _text(version.get("goal")),
+            _text(version.get("rationale")),
+            " ".join(_list_text(version.get("success_metrics"))),
+        ]
+    )
+    for requirement in requirements:
+        for decision in _required_open_question_decisions(requirement, version_text=version_text):
+            if not any(term in question_text for term in decision["terms"]):
+                errors.append(
+                    f"{prefix}.open_questions: missing product decision question for "
+                    f"{decision['requirement_id']} ({decision['decision']})"
+                )
+
+
+def _required_open_question_decisions(requirement: dict[str, Any], *, version_text: str = "") -> list[dict[str, Any]]:
+    requirement_id = _text(requirement.get("requirement_id"))
+    text = " ".join(
+        [
+            _text(requirement.get("title")),
+            _text(requirement.get("description")),
+            " ".join(_list_text(requirement.get("acceptance_criteria"))),
+            " ".join(_list_text(requirement.get("risks"))),
+            " ".join(_list_text(requirement.get("success_metrics"))),
+            _text(requirement.get("uncertainty")),
+            version_text,
+        ]
+    ).lower()
+    decisions: list[dict[str, Any]] = []
+    if "free" in text and ("threshold" in text or "proportion" in text or "library" in text or "access" in text):
+        decisions.append(
+            {
+                "requirement_id": requirement_id,
+                "decision": "free access threshold or scope",
+                "terms": ["free", "threshold", "proportion", "library", "access"],
+            }
+        )
+    if _contains_any_term(text, ["refresh", "cadence", "frequency", "monthly", "update cadence", "content update"]):
+        decisions.append(
+            {
+                "requirement_id": requirement_id,
+                "decision": "content refresh cadence or frequency",
+                "terms": ["refresh", "cadence", "frequency", "monthly", "update"],
+            }
+        )
+    if _contains_any_term(text, ["support"]) and _contains_any_term(text, ["channel", "channels", "email", "chat", "contact"]):
+        decisions.append(
+            {
+                "requirement_id": requirement_id,
+                "decision": "support channel selection",
+                "terms": ["support", "channel", "email", "chat", "contact"],
+            }
+        )
+    if _contains_any_term(text, ["large file", "large files"]) and _contains_any_term(text, ["crash", "crashes", "opening", "open"]):
+        decisions.append(
+            {
+                "requirement_id": requirement_id,
+                "decision": "large file stability threshold or definition",
+                "terms": ["large file", "large files", "crash", "threshold", "size"],
+            }
+        )
+    if "export" in text and "format" in text:
+        decisions.append(
+            {
+                "requirement_id": requirement_id,
+                "decision": "export format selection",
+                "terms": ["export", "format"],
+            }
+        )
+    if _contains_any_term(text, ["notification", "notifications", "reminder", "reminders"]) and _contains_any_term(
+        text, ["late", "duplicate", "on time", "timing", "delivery"]
+    ):
+        decisions.append(
+            {
+                "requirement_id": requirement_id,
+                "decision": "notification timing and duplication threshold",
+                "terms": ["notification", "reminder", "on time", "duplicate", "timing", "delivery"],
+            }
+        )
+    return decisions
+
+
+def _contains_any_term(text: str, terms: list[str]) -> bool:
+    return any(_contains_term(text, term) for term in terms)
+
+
+def _contains_term(text: str, term: str) -> bool:
+    if " " in term:
+        return term in text
+    return re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", text) is not None
 
 
 def _fail(
@@ -511,6 +596,15 @@ def _text_coherent(left: str, right: str) -> bool:
     if not left_tokens or not right_tokens:
         return False
     return bool(left_tokens.intersection(right_tokens))
+
+
+def _goal_matches_version_goal(prd_goal: str, version_goal: str) -> bool:
+    return _normalize_goal_contract(prd_goal) == _normalize_goal_contract(version_goal)
+
+
+def _normalize_goal_contract(value: str) -> str:
+    normalized = re.sub(r"\s+", " ", value.strip())
+    return normalized.rstrip(".。!！?？").casefold()
 
 
 def _domain_tokens(value: str) -> set[str]:
