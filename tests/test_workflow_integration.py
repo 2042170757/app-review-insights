@@ -70,11 +70,24 @@ class WorkflowIntegrationTests(unittest.TestCase):
         self.assertEqual(result.stages[0].summary["analysis_focus"], "positive_feedback_analysis")
         self.assertTrue(all(context["analysis_focus"] == "positive_feedback_analysis" for context in runner.contexts))
 
+    def test_requirement_retry_metadata_is_preserved_in_stage_summary(self) -> None:
+        runner = RecordingRunner()
+        runner.requirement_summary = {"retry_attempted": True, "retry_success": True}
+        orchestrator = WorkflowOrchestrator(pipeline_runner=runner)
+        run = orchestrator.create_run(app_url=VALID_URL, analysis_goal="Goal")
+
+        result = orchestrator.run_pipeline_sync(run.run_id)
+        requirement_stage = result.stages[6]
+
+        self.assertTrue(requirement_stage.summary["retry_attempted"])
+        self.assertTrue(requirement_stage.summary["retry_success"])
+
 
 class RecordingRunner:
     def __init__(self) -> None:
         self.stages: list[str] = []
         self.contexts: list[dict] = []
+        self.requirement_summary: dict[str, bool] = {}
 
     def run_stage(self, *, stage: str, context: dict):
         self.stages.append(stage)
@@ -97,6 +110,8 @@ class RecordingRunner:
             )
         else:
             warnings = []
+        if stage == "requirement_generation":
+            summary.update(self.requirement_summary)
         return WorkflowStageExecutionResult(
             stage=stage,
             message=f"{stage} complete",

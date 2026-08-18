@@ -137,7 +137,7 @@ def plan_roadmap(
         priority_by_requirement_id=priority_by_requirement_id,
         existing_dependencies_by_requirement_id=existing_dependencies,
     )
-    roadmap = _roadmap_from_validation(validation) if validation.passed else {"versions": [], "roadmap_items": []}
+    roadmap = _roadmap_from_validation(validation) if validation.passed else _empty_roadmap()
     generation_passed = validation.status not in {
         STATUS_INVALID_JSON,
         STATUS_SCHEMA_VALIDATION_FAILED,
@@ -289,7 +289,7 @@ def create_failure_result(
         generation_passed=False,
         raw_output="",
         validation=validation,
-        roadmap={"versions": [], "roadmap_items": []},
+        roadmap=_empty_roadmap(),
         provider=getattr(provider, "provider_name", None),
         model=getattr(provider, "model", None),
         analysis_goal=analysis_goal,
@@ -399,4 +399,13 @@ def _roadmap_from_validation(validation: RoadmapValidationResult) -> dict[str, A
         "roadmap_items": validation.roadmap_items,
         "deferred_requirement_ids": validation.deferred_requirement_ids,
         "deferred_rationale": validation.deferred_rationale,
+    }
+
+
+def _empty_roadmap() -> dict[str, Any]:
+    return {
+        "versions": [],
+        "roadmap_items": [],
+        "deferred_requirement_ids": [],
+        "deferred_rationale": {},
     }

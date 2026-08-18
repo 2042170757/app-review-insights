@@ -643,6 +643,7 @@ def _requirement_summary() -> dict[str, Any]:
     requirements = _load_json(ANALYSIS_DIR / "requirements.json").get("requirements", [])
     validation = _load_json(ANALYSIS_DIR / "requirement_validation.json")
     priority = _load_json(ANALYSIS_DIR / "priority_report.json").get("priority_report", [])
+    json_recovery = raw.get("json_recovery") if isinstance(raw.get("json_recovery"), dict) else {}
     return {
         "requirement_count": len(requirements),
         "requirement_type_counts": _count_by(requirements, "requirement_type"),
@@ -650,6 +651,8 @@ def _requirement_summary() -> dict[str, Any]:
         "validation": validation.get("status"),
         "provider": raw.get("provider"),
         "model": raw.get("model"),
+        "retry_attempted": json_recovery.get("retry_attempted", False),
+        "retry_success": json_recovery.get("retry_success", False),
     }
 
 

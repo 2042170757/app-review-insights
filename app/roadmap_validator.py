@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
@@ -452,11 +453,6 @@ def _version_goal_errors(versions: list[Version], requirements_by_id: dict[str, 
         "priority product corrections",
         "reserved",
     }
-    domain_terms = {
-        "subscription": {"subscription", "billing", "paywall", "free", "premium", "cancellation"},
-        "content": {"workout", "content", "imagery", "customization", "freshness", "library"},
-        "operations": {"support", "ads", "redirects", "account"},
-    }
     for version in versions:
         if version.version_id == "Deferred" or not version.requirement_ids:
             continue
@@ -472,17 +468,117 @@ def _version_goal_errors(versions: list[Version], requirements_by_id: dict[str, 
         ).lower()
         if not requirement_text:
             continue
-        matched_domains = [
-            domain
-            for domain, terms in domain_terms.items()
-            if any(term in requirement_text for term in terms)
-        ]
-        if len(version.requirement_ids) > 1 and len(matched_domains) > 1:
-            if not any(term in version_text for domain in matched_domains for term in domain_terms[domain]):
-                errors.append(
-                    f"{version.version_id}: mixed requirement domains are not explained by the version goal"
-                )
+        if len(version.requirement_ids) > 1 and not _version_explains_requirements(
+            version_text,
+            [requirements_by_id.get(requirement_id, {}) for requirement_id in version.requirement_ids],
+        ):
+            errors.append(
+                f"{version.version_id}: mixed requirement domains are not explained by the version goal"
+            )
     return errors
+
+
+def _version_explains_requirements(version_text: str, requirements: list[dict[str, Any]]) -> bool:
+    version_words = _meaningful_words(version_text)
+    if not version_words:
+        return False
+    explained = 0
+    for requirement in requirements:
+        requirement_words = _meaningful_words(
+            f"{requirement.get('title', '')} {requirement.get('description', '')}"
+        )
+        if version_words.intersection(requirement_words) or _has_related_goal_overlap(version_words, requirement_words):
+            explained += 1
+    if explained == len(requirements):
+        return True
+    covered_ratio = explained / len(requirements) if requirements else 1.0
+    return covered_ratio >= 0.6 and bool(version_words.intersection(GENERAL_PRODUCT_GROUPING_WORDS))
+
+
+GENERAL_PRODUCT_GROUPING_WORDS = {
+    "access",
+    "accessibility",
+    "account",
+    "clarity",
+    "completeness",
+    "consistency",
+    "control",
+    "core",
+    "experience",
+    "polish",
+    "quality",
+    "reliability",
+    "reliable",
+    "stability",
+    "trust",
+    "usability",
+    "user",
+}
+
+RELATED_GOAL_WORD_GROUPS = (
+    {"account", "login", "sign", "authentication", "verification"},
+    {"billing", "cancel", "cancellation", "payment", "pricing", "subscription"},
+    {"content", "catalog", "library", "article", "reading"},
+    {"find", "search", "navigation"},
+    {"performance", "speed", "slow", "stability", "reliable", "freeze"},
+    {"layout", "navigation", "ui", "usability", "ux"},
+)
+
+STOP_WORDS = {
+    "a",
+    "an",
+    "and",
+    "app",
+    "are",
+    "as",
+    "be",
+    "by",
+    "can",
+    "current",
+    "for",
+    "from",
+    "in",
+    "is",
+    "of",
+    "on",
+    "or",
+    "should",
+    "the",
+    "to",
+    "users",
+    "with",
+}
+
+
+def _meaningful_words(value: str) -> set[str]:
+    return {
+        _normalize_goal_word(word)
+        for word in re.findall(r"[a-z0-9]+", value.lower())
+        if len(word) > 2 and word not in STOP_WORDS
+    }
+
+
+def _has_related_goal_overlap(version_words: set[str], requirement_words: set[str]) -> bool:
+    for group in RELATED_GOAL_WORD_GROUPS:
+        if version_words.intersection(group) and requirement_words.intersection(group):
+            return True
+    return False
+
+
+def _normalize_goal_word(word: str) -> str:
+    if word in {"authenticate", "authenticated", "auth", "login", "logged", "signin", "signing"}:
+        return "login"
+    if word in {"cancels", "cancelled", "canceling"}:
+        return "cancel"
+    if word in {"sync", "synced", "syncing", "synchronize", "synchronized", "synchronization"}:
+        return "sync"
+    if word in {"reliable", "reliability", "reliably", "unreliable"}:
+        return "reliable"
+    if word.endswith("ies") and len(word) > 4:
+        return f"{word[:-3]}y"
+    if word.endswith("s") and len(word) > 4:
+        return word[:-1]
+    return word
 
 
 def _unsupported_product_scope_errors(versions: list[Version], requirements_by_id: dict[str, dict[str, Any]]) -> list[str]:

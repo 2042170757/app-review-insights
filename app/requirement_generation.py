@@ -82,6 +82,8 @@ class RequirementGenerationResult:
     extracted_json: str | None = None
     normalized_json: str | None = None
     json_recovery: dict[str, Any] | None = None
+    initial_raw_response: str | None = None
+    retry_raw_response: str | None = None
     response_metadata: dict[str, Any] | None = None
     is_mock: bool = False
 
@@ -143,21 +145,105 @@ def generate_requirements(
     except ModelRequestError as exc:
         return create_failure_result("Model Request Error", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus)
 
-    recovery = parse_json_response(response.raw_text)
+    initial_recovery = parse_json_response(response.raw_text)
+    recovery = initial_recovery
+    retry_response = None
     if not recovery.success:
-        result = create_invalid_json_result(
-            analysis_goal=analysis_goal,
-            output_dir=output_dir,
-            provider=provider,
-            is_mock=is_mock,
-            input_finding_count=len(findings_by_id),
-            raw_output=response.raw_text,
-            response_metadata=response.metadata,
-            json_recovery=recovery,
-            analysis_focus=analysis_focus,
-        )
-        save_requirement_outputs(result, output_dir=output_dir)
-        return result
+        if response.raw_text.strip():
+            retry_request = build_requirement_json_retry_request(
+                original_request=request,
+                invalid_response=response.raw_text,
+            )
+            try:
+                retry_response = provider.generate(retry_request)
+            except MissingAPIKeyError as exc:
+                return create_retry_failure_result(
+                    "Missing API Key",
+                    analysis_goal,
+                    str(exc),
+                    output_dir,
+                    provider,
+                    is_mock,
+                    len(findings_by_id),
+                    initial_raw_response=response.raw_text,
+                    initial_response_metadata=response.metadata,
+                    initial_recovery=initial_recovery,
+                    analysis_focus=analysis_focus,
+                )
+            except ModelAuthenticationError as exc:
+                return create_retry_failure_result(
+                    "Authentication Error",
+                    analysis_goal,
+                    str(exc),
+                    output_dir,
+                    provider,
+                    is_mock,
+                    len(findings_by_id),
+                    initial_raw_response=response.raw_text,
+                    initial_response_metadata=response.metadata,
+                    initial_recovery=initial_recovery,
+                    analysis_focus=analysis_focus,
+                )
+            except ModelRateLimitError as exc:
+                return create_retry_failure_result(
+                    "Rate Limit",
+                    analysis_goal,
+                    str(exc),
+                    output_dir,
+                    provider,
+                    is_mock,
+                    len(findings_by_id),
+                    initial_raw_response=response.raw_text,
+                    initial_response_metadata=response.metadata,
+                    initial_recovery=initial_recovery,
+                    analysis_focus=analysis_focus,
+                )
+            except ModelTimeoutError as exc:
+                return create_retry_failure_result(
+                    "Timeout",
+                    analysis_goal,
+                    str(exc),
+                    output_dir,
+                    provider,
+                    is_mock,
+                    len(findings_by_id),
+                    initial_raw_response=response.raw_text,
+                    initial_response_metadata=response.metadata,
+                    initial_recovery=initial_recovery,
+                    analysis_focus=analysis_focus,
+                )
+            except ModelRequestError as exc:
+                return create_retry_failure_result(
+                    "Model Request Error",
+                    analysis_goal,
+                    str(exc),
+                    output_dir,
+                    provider,
+                    is_mock,
+                    len(findings_by_id),
+                    initial_raw_response=response.raw_text,
+                    initial_response_metadata=response.metadata,
+                    initial_recovery=initial_recovery,
+                    analysis_focus=analysis_focus,
+                )
+            recovery = parse_json_response(retry_response.raw_text)
+        if not recovery.success:
+            result = create_invalid_json_result(
+                analysis_goal=analysis_goal,
+                output_dir=output_dir,
+                provider=provider,
+                is_mock=is_mock,
+                input_finding_count=len(findings_by_id),
+                raw_output=retry_response.raw_text if retry_response else response.raw_text,
+                response_metadata=retry_response.metadata if retry_response else response.metadata,
+                json_recovery=recovery,
+                analysis_focus=analysis_focus,
+                initial_raw_response=response.raw_text,
+                retry_raw_response=retry_response.raw_text if retry_response else None,
+                initial_recovery=initial_recovery,
+            )
+            save_requirement_outputs(result, output_dir=output_dir)
+            return result
 
     extracted_json = recovery.extracted_response
     evidence_reports_by_id = _evidence_reports_by_id(evidence_report)
@@ -177,20 +263,27 @@ def generate_requirements(
     result = RequirementGenerationResult(
         generation_status=STATUS_SUCCESS if generation_passed else STATUS_INVALID_JSON,
         generation_passed=generation_passed,
-        raw_output=response.raw_text,
+        raw_output=retry_response.raw_text if retry_response else response.raw_text,
         validation=validation,
         requirements=requirements,
         priority_report=[decision.to_dict() for decision in priority_decisions],
-        provider=response.provider,
-        model=response.model,
+        provider=retry_response.provider if retry_response else response.provider,
+        model=retry_response.model if retry_response else response.model,
         analysis_goal=analysis_goal,
         input_finding_count=len(findings_by_id),
         saved_paths={},
         analysis_focus=analysis_focus,
         extracted_json=extracted_json,
         normalized_json=normalized_json,
-        json_recovery=recovery.metadata(),
-        response_metadata=response.metadata,
+        json_recovery=_json_recovery_metadata(
+            initial_recovery=initial_recovery,
+            final_recovery=recovery,
+            retry_attempted=retry_response is not None,
+            retry_success=retry_response is not None,
+        ),
+        initial_raw_response=response.raw_text,
+        retry_raw_response=retry_response.raw_text if retry_response else None,
+        response_metadata=retry_response.metadata if retry_response else response.metadata,
         is_mock=is_mock,
     )
     save_requirement_outputs(result, output_dir=output_dir)
@@ -279,6 +372,83 @@ def build_requirement_request(
     return LLMRequest(system_prompt=_system_prompt_for_focus(analysis_focus), user_prompt=user_prompt, analysis_goal=analysis_goal)
 
 
+def build_requirement_json_retry_request(
+    *,
+    original_request: LLMRequest,
+    invalid_response: str,
+) -> LLMRequest:
+    original_context = _compact_retry_business_context(original_request)
+    retry_payload = {
+        "instruction": (
+            "Convert the previous response into strict JSON matching the required Requirement schema. "
+            "Return only JSON. Do not use Markdown. Do not add explanation text. "
+            "Do not change the semantic meaning of any Requirement content. "
+            "Do not add Requirements. Do not delete Requirements. "
+            "Do not modify finding_id, review_id, priority, requirement_type, or other business fields. "
+            "If the previous response was truncated, finish only the JSON structure and incomplete requirement fields "
+            "using the compact business context below; keep wording concise enough to fit in the response limit."
+        ),
+        "original_business_context": original_context,
+        "previous_invalid_response": invalid_response,
+    }
+    return LLMRequest(
+        system_prompt=(
+            "You are repairing only the JSON format of a Requirement Generation response. "
+            "Do not reinterpret the product analysis. Do not change business semantics. "
+            "Use the previous response as the source of Requirement content. "
+            "Return only strict JSON matching the requested Requirement schema."
+        ),
+        user_prompt=json.dumps(retry_payload, ensure_ascii=False, indent=2),
+        analysis_goal=original_request.analysis_goal,
+    )
+
+
+def _compact_retry_business_context(original_request: LLMRequest) -> dict[str, Any]:
+    context: dict[str, Any] = {
+        "analysis_goal": original_request.analysis_goal,
+        "system_rules": original_request.system_prompt,
+    }
+    try:
+        payload = json.loads(original_request.user_prompt)
+    except json.JSONDecodeError:
+        context["user_prompt_excerpt"] = original_request.user_prompt[:2000]
+        return context
+    if not isinstance(payload, dict):
+        context["user_prompt_excerpt"] = original_request.user_prompt[:2000]
+        return context
+
+    findings = payload.get("validated_findings")
+    compact_findings: list[dict[str, Any]] = []
+    if isinstance(findings, list):
+        for finding in findings:
+            if not isinstance(finding, dict):
+                continue
+            compact_findings.append(
+                {
+                    "finding_id": finding.get("finding_id"),
+                    "finding_type": finding.get("finding_type"),
+                    "review_ids": finding.get("review_ids"),
+                    "support_count": finding.get("support_count"),
+                    "confidence": finding.get("confidence"),
+                }
+            )
+
+    for key in (
+        "analysis_focus",
+        "analysis_focus_label",
+        "valid_finding_ids",
+        "required_output_schema",
+        "priority_note",
+        "allowed_requirement_types",
+        "requirement_type_rule",
+        "prohibited_word_rule",
+    ):
+        if key in payload:
+            context[key] = payload[key]
+    context["validated_findings"] = compact_findings
+    return context
+
+
 def _system_prompt_for_focus(analysis_focus: str) -> str:
     focus = normalize_analysis_focus(analysis_focus)
     if focus == ANALYSIS_FOCUS_POSITIVE_FEEDBACK:
@@ -342,6 +512,53 @@ def create_failure_result(
     return result
 
 
+def create_retry_failure_result(
+    status: str,
+    analysis_goal: str,
+    error: str,
+    output_dir: Path,
+    provider: LLMProvider,
+    is_mock: bool,
+    input_finding_count: int,
+    *,
+    initial_raw_response: str,
+    initial_response_metadata: dict[str, Any] | None,
+    initial_recovery: JSONRecoveryResult,
+    analysis_focus: str = DEFAULT_ANALYSIS_FOCUS,
+) -> RequirementGenerationResult:
+    validation = RequirementValidationResult(status="SKIPPED", passed=False, errors=[error])
+    result = RequirementGenerationResult(
+        generation_status=status,
+        generation_passed=False,
+        raw_output="",
+        validation=validation,
+        requirements=[],
+        priority_report=[],
+        provider=getattr(provider, "provider_name", None),
+        model=getattr(provider, "model", None),
+        analysis_goal=analysis_goal,
+        input_finding_count=input_finding_count,
+        saved_paths={},
+        analysis_focus=normalize_analysis_focus(analysis_focus),
+        error=error,
+        extracted_json=None,
+        normalized_json=None,
+        json_recovery=_json_recovery_metadata(
+            initial_recovery=initial_recovery,
+            final_recovery=initial_recovery,
+            retry_attempted=True,
+            retry_success=False,
+            retry_error=error,
+        ),
+        initial_raw_response=initial_raw_response,
+        retry_raw_response=None,
+        response_metadata=initial_response_metadata,
+        is_mock=is_mock,
+    )
+    save_requirement_outputs(result, output_dir=output_dir)
+    return result
+
+
 def create_invalid_json_result(
     *,
     analysis_goal: str,
@@ -353,9 +570,13 @@ def create_invalid_json_result(
     response_metadata: dict[str, Any] | None,
     json_recovery: JSONRecoveryResult,
     analysis_focus: str = DEFAULT_ANALYSIS_FOCUS,
+    initial_raw_response: str | None = None,
+    retry_raw_response: str | None = None,
+    initial_recovery: JSONRecoveryResult | None = None,
 ) -> RequirementGenerationResult:
     error = json_recovery.error or "Invalid JSON"
     validation = RequirementValidationResult(status="SKIPPED", passed=False, errors=[error])
+    retry_attempted = retry_raw_response is not None
     return RequirementGenerationResult(
         generation_status=STATUS_INVALID_JSON,
         generation_passed=False,
@@ -372,7 +593,14 @@ def create_invalid_json_result(
         error=error,
         extracted_json=json_recovery.extracted_response or None,
         normalized_json=None,
-        json_recovery=json_recovery.metadata(),
+        json_recovery=_json_recovery_metadata(
+            initial_recovery=initial_recovery or json_recovery,
+            final_recovery=json_recovery,
+            retry_attempted=retry_attempted,
+            retry_success=False,
+        ),
+        initial_raw_response=initial_raw_response or raw_output,
+        retry_raw_response=retry_raw_response,
         response_metadata=response_metadata,
         is_mock=is_mock,
     )
@@ -400,6 +628,8 @@ def save_requirement_outputs(
                 "generation_status": result.generation_status,
                 "raw_output": result.raw_output,
                 "raw_response": result.raw_output,
+                "initial_raw_response": result.initial_raw_response if result.initial_raw_response is not None else result.raw_output,
+                "retry_raw_response": result.retry_raw_response,
                 "extracted_json": result.extracted_json,
                 "extracted_response": _raw_extracted_response(result),
                 "recovery_method": (result.json_recovery or {}).get("method"),
@@ -422,6 +652,28 @@ def save_requirement_outputs(
     paths = {"raw": raw_path, "requirements": requirements_path, "validation": validation_path, "priority": priority_path}
     result.saved_paths = {key: str(path) for key, path in paths.items()}
     return paths
+
+
+def _json_recovery_metadata(
+    *,
+    initial_recovery: JSONRecoveryResult,
+    final_recovery: JSONRecoveryResult,
+    retry_attempted: bool,
+    retry_success: bool,
+    retry_error: str | None = None,
+) -> dict[str, Any]:
+    return {
+        **final_recovery.metadata(),
+        "initial_attempted": initial_recovery.attempted,
+        "initial_method": initial_recovery.method,
+        "initial_success": initial_recovery.success,
+        "initial_error": initial_recovery.error,
+        "retry_attempted": retry_attempted,
+        "retry_reason": "invalid_json" if retry_attempted else None,
+        "retry_success": retry_success,
+        "retry_recovery_method": final_recovery.method if retry_attempted and final_recovery.success else None,
+        "retry_error": retry_error or (final_recovery.error if retry_attempted and not final_recovery.success else None),
+    }
 
 
 def _raw_extracted_response(result: RequirementGenerationResult) -> Any:

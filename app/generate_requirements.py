@@ -111,6 +111,9 @@ def main() -> int:
     print(f"Requirement Count: {len(result.requirements)}")
     print(f"Input Findings: {result.input_finding_count}")
     print(f"Validation: {'PASS' if result.validation.passed else result.validation.status}")
+    json_recovery = result.json_recovery or {}
+    print(f"Retry Attempted: {json_recovery.get('retry_attempted', False)}")
+    print(f"Retry Success: {json_recovery.get('retry_success', False)}")
     for requirement in result.requirements:
         print(f"requirement_id: {requirement['requirement_id']}")
         print(f"requirement_type: {requirement.get('requirement_type', 'problem')}")

@@ -83,6 +83,27 @@ class RoadmapScopeValidationTests(unittest.TestCase):
 
         self.assertTrue(result.passed)
 
+    def test_unknown_app_mixed_core_usability_goal_passes(self) -> None:
+        result = _validate(
+            _payload(
+                "Improve the reliability and usability of core app features including search, performance, and UI/UX.",
+                requirements=["REQ-007", "REQ-008", "REQ-009"],
+            )
+        )
+
+        self.assertTrue(result.passed)
+
+    def test_mixed_goal_without_requirement_overlap_fails(self) -> None:
+        result = _validate(
+            _payload(
+                "Improve the onboarding dashboard experience.",
+                requirements=["REQ-007", "REQ-008", "REQ-009"],
+            )
+        )
+
+        self.assertFalse(result.passed)
+        self.assertEqual(result.status, STATUS_VERSION_GOAL_INCOHERENCE)
+
     def test_upstream_supported_coupon_goal_passes(self) -> None:
         result = _validate(_payload("Clarify coupon eligibility.", requirements=["REQ-006"]))
 
@@ -172,6 +193,24 @@ def _requirements_by_id() -> dict[str, dict]:
             "priority": "P2",
             "title": "Clarify coupon eligibility",
             "description": "Coupon terms should be visible before checkout.",
+        },
+        "REQ-007": {
+            "requirement_id": "REQ-007",
+            "priority": "P2",
+            "title": "Search and find capability is unreliable",
+            "description": "Users need reliable search and find behavior.",
+        },
+        "REQ-008": {
+            "requirement_id": "REQ-008",
+            "priority": "P2",
+            "title": "App performance and stability are inadequate",
+            "description": "Users experience freezes, slowness, and battery drain.",
+        },
+        "REQ-009": {
+            "requirement_id": "REQ-009",
+            "priority": "P2",
+            "title": "UI/UX design is not user-friendly",
+            "description": "Users find layout and navigation clunky.",
         },
     }
 
