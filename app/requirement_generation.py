@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import asdict, dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,6 +32,8 @@ from app.requirement_validator import RequirementValidationResult, validate_requ
 
 
 DEFAULT_REQUIREMENT_GOAL = "分析低评分用户对订阅和价格的主要问题"
+DEEPSEEK_REQUIREMENT_MAX_TOKENS = "DEEPSEEK_REQUIREMENT_MAX_TOKENS"
+DEFAULT_REQUIREMENT_MAX_TOKENS = 5000
 STATUS_SUCCESS = "Success"
 STATUS_INVALID_JSON = "Invalid JSON"
 STATUS_FINDING_VALIDATION_FAILED = "Finding Validation Failed"
@@ -60,6 +63,15 @@ Rules:
 18. Never use these prohibited words or substrings anywhere in a Requirement: function, functions, functionality, functional, API, endpoint, database, code, class, component, React, Vue.
 19. Use product-behavior wording instead: write "working close button" instead of "functional close button", "exercise catalog" instead of "exercise database", and "product behavior" or "capability" instead of "functionality".
 20. Success metrics must be observable and measurable. Do not use vague preservation metrics such as "remains high", "remains stable", or "maintain satisfaction" unless the input defines the measurement. Use an empty success_metrics list when reliable measurement is not supported.
+21. Keep output concise and avoid repeated language.
+22. Do not repeat Finding statements verbatim.
+23. Do not repeat Review body text.
+24. Do not output explanation text outside JSON.
+25. Do not generate duplicate Requirements.
+26. Do not split one Finding into multiple near-duplicate Requirements.
+27. Prefer one concise Requirement per distinct product behavior.
+28. Each Requirement should use concise fields: short title, one focused description, and 2-3 verifiable acceptance criteria when possible.
+29. If multiple Findings support the same product behavior, merge them into one Requirement with multiple finding_ids.
 
 Return only JSON matching the required Requirement schema."""
 
@@ -76,6 +88,7 @@ class RequirementGenerationResult:
     model: str | None
     analysis_goal: str
     input_finding_count: int
+    input_scale: dict[str, Any]
     saved_paths: dict[str, str]
     analysis_focus: str = DEFAULT_ANALYSIS_FOCUS
     error: str | None = None
@@ -100,6 +113,7 @@ def generate_requirements(
     is_mock: bool = False,
 ) -> RequirementGenerationResult:
     analysis_focus = normalize_analysis_focus(analysis_focus)
+    input_scale = calculate_requirement_input_scale(findings, evidence_report)
     finding_validation_passed = _finding_validation_passed(finding_validation)
     findings_by_id = _findings_by_id(findings)
     eligible_finding_ids = set(findings_by_id)
@@ -113,6 +127,7 @@ def generate_requirements(
             is_mock,
             len(findings_by_id),
             analysis_focus=analysis_focus,
+            input_scale=input_scale,
         )
     if not findings_by_id:
         return create_failure_result(
@@ -124,26 +139,41 @@ def generate_requirements(
             is_mock,
             0,
             analysis_focus=analysis_focus,
+            input_scale=input_scale,
         )
 
-    request = build_requirement_request(
-        findings=findings,
-        evidence_report=evidence_report,
-        analysis_goal=analysis_goal,
-        analysis_focus=analysis_focus,
-    )
+    try:
+        request = build_requirement_request(
+            findings=findings,
+            evidence_report=evidence_report,
+            analysis_goal=analysis_goal,
+            analysis_focus=analysis_focus,
+            input_scale=input_scale,
+        )
+    except ModelRequestError as exc:
+        return create_failure_result(
+            "Model Request Error",
+            analysis_goal,
+            str(exc),
+            output_dir,
+            provider,
+            is_mock,
+            len(findings_by_id),
+            analysis_focus=analysis_focus,
+            input_scale=input_scale,
+        )
     try:
         response = provider.generate(request)
     except MissingAPIKeyError as exc:
-        return create_failure_result("Missing API Key", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus)
+        return create_failure_result("Missing API Key", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus, input_scale=input_scale)
     except ModelAuthenticationError as exc:
-        return create_failure_result("Authentication Error", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus)
+        return create_failure_result("Authentication Error", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus, input_scale=input_scale)
     except ModelRateLimitError as exc:
-        return create_failure_result("Rate Limit", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus)
+        return create_failure_result("Rate Limit", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus, input_scale=input_scale)
     except ModelTimeoutError as exc:
-        return create_failure_result("Timeout", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus)
+        return create_failure_result("Timeout", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus, input_scale=input_scale)
     except ModelRequestError as exc:
-        return create_failure_result("Model Request Error", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus)
+        return create_failure_result("Model Request Error", analysis_goal, str(exc), output_dir, provider, is_mock, len(findings_by_id), analysis_focus=analysis_focus, input_scale=input_scale)
 
     initial_recovery = parse_json_response(response.raw_text)
     recovery = initial_recovery
@@ -169,6 +199,7 @@ def generate_requirements(
                     initial_response_metadata=response.metadata,
                     initial_recovery=initial_recovery,
                     analysis_focus=analysis_focus,
+                    input_scale=input_scale,
                 )
             except ModelAuthenticationError as exc:
                 return create_retry_failure_result(
@@ -183,6 +214,7 @@ def generate_requirements(
                     initial_response_metadata=response.metadata,
                     initial_recovery=initial_recovery,
                     analysis_focus=analysis_focus,
+                    input_scale=input_scale,
                 )
             except ModelRateLimitError as exc:
                 return create_retry_failure_result(
@@ -197,6 +229,7 @@ def generate_requirements(
                     initial_response_metadata=response.metadata,
                     initial_recovery=initial_recovery,
                     analysis_focus=analysis_focus,
+                    input_scale=input_scale,
                 )
             except ModelTimeoutError as exc:
                 return create_retry_failure_result(
@@ -211,6 +244,7 @@ def generate_requirements(
                     initial_response_metadata=response.metadata,
                     initial_recovery=initial_recovery,
                     analysis_focus=analysis_focus,
+                    input_scale=input_scale,
                 )
             except ModelRequestError as exc:
                 return create_retry_failure_result(
@@ -225,6 +259,7 @@ def generate_requirements(
                     initial_response_metadata=response.metadata,
                     initial_recovery=initial_recovery,
                     analysis_focus=analysis_focus,
+                    input_scale=input_scale,
                 )
             recovery = parse_json_response(retry_response.raw_text)
         if not recovery.success:
@@ -241,6 +276,7 @@ def generate_requirements(
                 initial_raw_response=response.raw_text,
                 retry_raw_response=retry_response.raw_text if retry_response else None,
                 initial_recovery=initial_recovery,
+                input_scale=input_scale,
             )
             save_requirement_outputs(result, output_dir=output_dir)
             return result
@@ -271,6 +307,7 @@ def generate_requirements(
         model=retry_response.model if retry_response else response.model,
         analysis_goal=analysis_goal,
         input_finding_count=len(findings_by_id),
+        input_scale=input_scale,
         saved_paths={},
         analysis_focus=analysis_focus,
         extracted_json=extracted_json,
@@ -296,9 +333,11 @@ def build_requirement_request(
     evidence_report: dict[str, Any],
     analysis_goal: str,
     analysis_focus: str = DEFAULT_ANALYSIS_FOCUS,
+    input_scale: dict[str, Any] | None = None,
 ) -> LLMRequest:
     analysis_focus = normalize_analysis_focus(analysis_focus)
     evidence_reports_by_id = _evidence_reports_by_id(evidence_report)
+    input_scale = input_scale or calculate_requirement_input_scale(findings, evidence_report)
     finding_payload = []
     for finding in findings:
         finding_id = finding.get("finding_id")
@@ -346,6 +385,13 @@ def build_requirement_request(
                 ]
             },
             "priority_note": "Model priority is advisory only; deterministic priority engine will assign final priority.",
+            "input_scale": input_scale,
+            "compact_output_rule": {
+                "deduplication": "Generate no duplicate or near-duplicate Requirements. Merge Findings that support the same product behavior into one Requirement with multiple finding_ids.",
+                "field_size": "Keep title, description, criteria, risks, metrics, and uncertainty concise. Do not repeat Finding statements or Review body text.",
+                "requirement_count": "Generate only Requirements with a clear product goal. Omit Findings that do not support an actionable Requirement.",
+                "json_only": "Return only the JSON object. Do not include Markdown, comments, or analysis text.",
+            },
             "allowed_requirement_types": ["problem", "positive_feedback", "mixed"],
             "requirement_type_rule": _requirement_type_rule(analysis_focus),
             "prohibited_word_rule": {
@@ -369,7 +415,15 @@ def build_requirement_request(
         ensure_ascii=False,
         indent=2,
     )
-    return LLMRequest(system_prompt=_system_prompt_for_focus(analysis_focus), user_prompt=user_prompt, analysis_goal=analysis_goal)
+    return LLMRequest(
+        system_prompt=_system_prompt_for_focus(analysis_focus),
+        user_prompt=user_prompt,
+        analysis_goal=analysis_goal,
+        generation_options={
+            "task": "requirement_generation",
+            "max_tokens": _requirement_max_tokens_from_env(),
+        },
+    )
 
 
 def build_requirement_json_retry_request(
@@ -400,6 +454,7 @@ def build_requirement_json_retry_request(
         ),
         user_prompt=json.dumps(retry_payload, ensure_ascii=False, indent=2),
         analysis_goal=original_request.analysis_goal,
+        generation_options=dict(original_request.generation_options),
     )
 
 
@@ -490,6 +545,7 @@ def create_failure_result(
     is_mock: bool,
     input_finding_count: int,
     analysis_focus: str = DEFAULT_ANALYSIS_FOCUS,
+    input_scale: dict[str, Any] | None = None,
 ) -> RequirementGenerationResult:
     validation = RequirementValidationResult(status="SKIPPED", passed=False, errors=[error])
     result = RequirementGenerationResult(
@@ -503,6 +559,7 @@ def create_failure_result(
         model=getattr(provider, "model", None),
         analysis_goal=analysis_goal,
         input_finding_count=input_finding_count,
+        input_scale=input_scale or {},
         saved_paths={},
         analysis_focus=normalize_analysis_focus(analysis_focus),
         error=error,
@@ -525,6 +582,7 @@ def create_retry_failure_result(
     initial_response_metadata: dict[str, Any] | None,
     initial_recovery: JSONRecoveryResult,
     analysis_focus: str = DEFAULT_ANALYSIS_FOCUS,
+    input_scale: dict[str, Any] | None = None,
 ) -> RequirementGenerationResult:
     validation = RequirementValidationResult(status="SKIPPED", passed=False, errors=[error])
     result = RequirementGenerationResult(
@@ -538,6 +596,7 @@ def create_retry_failure_result(
         model=getattr(provider, "model", None),
         analysis_goal=analysis_goal,
         input_finding_count=input_finding_count,
+        input_scale=input_scale or {},
         saved_paths={},
         analysis_focus=normalize_analysis_focus(analysis_focus),
         error=error,
@@ -573,6 +632,7 @@ def create_invalid_json_result(
     initial_raw_response: str | None = None,
     retry_raw_response: str | None = None,
     initial_recovery: JSONRecoveryResult | None = None,
+    input_scale: dict[str, Any] | None = None,
 ) -> RequirementGenerationResult:
     error = json_recovery.error or "Invalid JSON"
     validation = RequirementValidationResult(status="SKIPPED", passed=False, errors=[error])
@@ -588,6 +648,7 @@ def create_invalid_json_result(
         model=getattr(provider, "model", None),
         analysis_goal=analysis_goal,
         input_finding_count=input_finding_count,
+        input_scale=input_scale or {},
         saved_paths={},
         analysis_focus=normalize_analysis_focus(analysis_focus),
         error=error,
@@ -626,6 +687,7 @@ def save_requirement_outputs(
                 "analysis_goal": result.analysis_goal,
                 "analysis_focus": result.analysis_focus,
                 "generation_status": result.generation_status,
+                "input_scale": result.input_scale,
                 "raw_output": result.raw_output,
                 "raw_response": result.raw_output,
                 "initial_raw_response": result.initial_raw_response if result.initial_raw_response is not None else result.raw_output,
@@ -703,6 +765,41 @@ def _apply_priority_engine(
         evidence_reports_by_id=evidence_reports_by_id,
     )
     return json.dumps(normalized_payload, ensure_ascii=False), decisions
+
+
+def calculate_requirement_input_scale(
+    findings: list[dict[str, Any]],
+    evidence_report: dict[str, Any],
+) -> dict[str, Any]:
+    finding_items = [finding for finding in findings if isinstance(finding, dict)]
+    finding_types = [
+        finding.get("finding_type") or "product_problem"
+        for finding in finding_items
+        if isinstance(finding.get("finding_type") or "product_problem", str)
+    ]
+    input_payload = {"findings": finding_items, "evidence_report": evidence_report}
+    input_chars = len(json.dumps(input_payload, ensure_ascii=False, sort_keys=True))
+    return {
+        "finding_count": len(finding_items),
+        "problem_finding_count": sum(1 for finding_type in finding_types if finding_type == "product_problem"),
+        "positive_finding_count": sum(1 for finding_type in finding_types if finding_type == "positive_feedback"),
+        "mixed_finding_count": sum(1 for finding_type in finding_types if finding_type == "mixed"),
+        "input_chars": input_chars,
+        "large_input": len(finding_items) >= 8 or input_chars >= 12000,
+    }
+
+
+def _requirement_max_tokens_from_env() -> int:
+    raw_value = os.environ.get(DEEPSEEK_REQUIREMENT_MAX_TOKENS)
+    if raw_value is None or raw_value.strip() == "":
+        return DEFAULT_REQUIREMENT_MAX_TOKENS
+    try:
+        value = int(raw_value)
+    except ValueError as exc:
+        raise ModelRequestError(f"Model Request Error: {DEEPSEEK_REQUIREMENT_MAX_TOKENS} must be an integer") from exc
+    if value <= 0:
+        raise ModelRequestError(f"Model Request Error: {DEEPSEEK_REQUIREMENT_MAX_TOKENS} must be greater than 0")
+    return value
 
 
 def _finding_validation_passed(finding_validation: dict[str, Any]) -> bool:

@@ -75,6 +75,7 @@ class DeepSeekProvider(LLMProvider):
         )
 
     def generate(self, request: LLMRequest) -> LLMResponse:
+        max_tokens = _request_max_tokens(request, self.max_tokens)
         payload = {
             "model": self.model,
             "messages": [
@@ -89,7 +90,7 @@ class DeepSeekProvider(LLMProvider):
             ],
             "response_format": {"type": "json_object"},
             "thinking": {"type": self.thinking},
-            "max_tokens": self.max_tokens,
+            "max_tokens": max_tokens,
             "temperature": self.temperature,
             "stream": False,
         }
@@ -139,7 +140,8 @@ class DeepSeekProvider(LLMProvider):
                 "endpoint": "/chat/completions",
                 "http_status": status_code,
                 "thinking": payload["thinking"],
-                "max_tokens": self.max_tokens,
+                "max_tokens": max_tokens,
+                "default_max_tokens": self.max_tokens,
                 "temperature": self.temperature,
                 "stream": payload["stream"],
                 "timeout_seconds": self.timeout_seconds,
@@ -170,6 +172,12 @@ def _sanitize_message(message: str, api_key: str) -> str:
 
 def _redact_provider_response(payload: dict[str, Any]) -> dict[str, Any]:
     return json.loads(json.dumps(payload))
+
+
+def _request_max_tokens(request: LLMRequest, default: int) -> int:
+    options = request.generation_options if isinstance(request.generation_options, dict) else {}
+    value = options.get("max_tokens", default)
+    return _validate_positive_int("request.max_tokens", value)
 
 
 def _parse_thinking(value: str) -> str:

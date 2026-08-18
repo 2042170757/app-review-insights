@@ -163,6 +163,7 @@ class RequirementJSONRetryTests(unittest.TestCase):
             system_prompt="system business prompt",
             user_prompt=json.dumps(original_payload),
             analysis_goal="goal",
+            generation_options={"max_tokens": 5000, "task": "requirement_generation"},
         )
         retry = build_requirement_json_retry_request(original_request=original, invalid_response="bad response")
         payload = json.loads(retry.user_prompt)
@@ -178,6 +179,8 @@ class RequirementJSONRetryTests(unittest.TestCase):
         self.assertEqual(payload["previous_invalid_response"], "bad response")
         self.assertIn("Do not change business semantics", retry.system_prompt)
         self.assertIn("Do not add Requirements", payload["instruction"])
+        self.assertEqual(retry.generation_options["max_tokens"], 5000)
+        self.assertEqual(retry.generation_options["task"], "requirement_generation")
 
 
 def _generate(provider: "_SequenceProvider"):

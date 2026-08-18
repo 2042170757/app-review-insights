@@ -11,6 +11,7 @@ class LLMRequest:
     system_prompt: str
     user_prompt: str
     analysis_goal: str
+    generation_options: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

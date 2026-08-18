@@ -195,6 +195,7 @@ def save_outputs(
         model="mock-requirement-model",
         analysis_goal="mock_requirement_generation",
         input_finding_count=0,
+        input_scale={},
         saved_paths={},
         is_mock=True,
     )

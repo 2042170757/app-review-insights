@@ -1,7 +1,9 @@
 import json
+import os
 import unittest
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest.mock import patch
 
 from app.llm.base import (
     LLMRequest,
@@ -11,11 +13,14 @@ from app.llm.base import (
     ModelTimeoutError,
 )
 from app.requirement_generation import (
+    DEFAULT_REQUIREMENT_MAX_TOKENS,
+    DEEPSEEK_REQUIREMENT_MAX_TOKENS,
     STATUS_EMPTY_FINDINGS,
     STATUS_FINDING_VALIDATION_FAILED,
     STATUS_INVALID_JSON,
     STATUS_SUCCESS,
     build_requirement_request,
+    calculate_requirement_input_scale,
     generate_requirements,
 )
 
@@ -46,6 +51,34 @@ class RequirementGenerationTests(unittest.TestCase):
 
         self.assertEqual(provider.requests[0].analysis_goal, "custom analysis goal")
         self.assertIn("custom analysis goal", provider.requests[0].user_prompt)
+
+    def test_requirement_request_uses_task_specific_default_max_tokens(self) -> None:
+        request = build_requirement_request(
+            findings=_findings(),
+            evidence_report=_evidence_report(),
+            analysis_goal="goal",
+        )
+
+        self.assertEqual(request.generation_options["task"], "requirement_generation")
+        self.assertEqual(request.generation_options["max_tokens"], DEFAULT_REQUIREMENT_MAX_TOKENS)
+
+    def test_requirement_max_tokens_can_be_overridden_from_env(self) -> None:
+        with patch.dict(os.environ, {DEEPSEEK_REQUIREMENT_MAX_TOKENS: "4000"}):
+            request = build_requirement_request(
+                findings=_findings(),
+                evidence_report=_evidence_report(),
+                analysis_goal="goal",
+            )
+
+        self.assertEqual(request.generation_options["max_tokens"], 4000)
+
+    def test_invalid_requirement_max_tokens_configuration_fails_generation(self) -> None:
+        with patch.dict(os.environ, {DEEPSEEK_REQUIREMENT_MAX_TOKENS: "0"}):
+            result = _generate(_raw_requirements([_requirement()]))
+
+        self.assertFalse(result.generation_passed)
+        self.assertEqual(result.generation_status, "Model Request Error")
+        self.assertEqual(result.validation.status, "SKIPPED")
 
     def test_requirement_request_carries_prohibited_word_rule(self) -> None:
         request = build_requirement_request(
@@ -229,6 +262,9 @@ class RequirementGenerationTests(unittest.TestCase):
 
         self.assertEqual(raw["provider"], "mock")
         self.assertTrue(raw["is_mock"])
+        self.assertEqual(raw["input_scale"]["finding_count"], 2)
+        self.assertEqual(raw["input_scale"]["problem_finding_count"], 2)
+        self.assertIn("input_chars", raw["input_scale"])
         self.assertEqual(raw["json_recovery"]["method"], "direct_json")
         self.assertFalse(raw["json_recovery"]["attempted"])
         self.assertEqual(len(requirements["requirements"]), 1)
@@ -246,6 +282,22 @@ class RequirementGenerationTests(unittest.TestCase):
         self.assertEqual(payload["analysis_goal"], "goal")
         self.assertEqual(payload["validated_findings"][0]["finding_id"], "FINDING-001")
         self.assertEqual(payload["validated_findings"][0]["evidence_report"]["evidence_strength"], "High")
+        self.assertEqual(payload["input_scale"]["finding_count"], 2)
+        self.assertIn("Do not repeat Finding statements", payload["compact_output_rule"]["field_size"])
+        self.assertIn("near-duplicate", payload["compact_output_rule"]["deduplication"])
+
+    def test_input_scale_counts_problem_and_positive_findings(self) -> None:
+        findings = [
+            {**_findings()[0], "finding_type": "product_problem"},
+            {**_findings()[1], "finding_type": "positive_feedback"},
+        ]
+
+        scale = calculate_requirement_input_scale(findings, _evidence_report())
+
+        self.assertEqual(scale["finding_count"], 2)
+        self.assertEqual(scale["problem_finding_count"], 1)
+        self.assertEqual(scale["positive_finding_count"], 1)
+        self.assertGreater(scale["input_chars"], 0)
 
     def test_positive_requirement_request_uses_preservation_framing(self) -> None:
         request = build_requirement_request(

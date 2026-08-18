@@ -153,6 +153,35 @@ class DeepSeekProviderTests(unittest.TestCase):
         self.assertEqual(mock_urlopen.call_args.kwargs["timeout"], 60.0)
         self.assertEqual(response.metadata["thinking"], {"type": "disabled"})
         self.assertEqual(response.metadata["max_tokens"], 3000)
+        self.assertEqual(response.metadata["default_max_tokens"], 3000)
+
+    @patch("app.llm.deepseek_provider.urlopen")
+    def test_request_max_tokens_override(self, mock_urlopen) -> None:
+        mock_urlopen.return_value = _FakeHTTPResponse(
+            {
+                "choices": [
+                    {
+                        "message": {"content": json.dumps({"requirements": []})},
+                    }
+                ],
+            },
+            status=200,
+        )
+        provider = DeepSeekProvider(api_key="secret-key", max_tokens=3000)
+        request = LLMRequest(
+            system_prompt="system",
+            user_prompt="user",
+            analysis_goal="goal",
+            generation_options={"max_tokens": 5000, "task": "requirement_generation"},
+        )
+
+        response = provider.generate(request)
+
+        sent_request = mock_urlopen.call_args.args[0]
+        sent_payload = json.loads(sent_request.data.decode("utf-8"))
+        self.assertEqual(sent_payload["max_tokens"], 5000)
+        self.assertEqual(response.metadata["max_tokens"], 5000)
+        self.assertEqual(response.metadata["default_max_tokens"], 3000)
 
     def test_markdown_code_fence_json(self) -> None:
         raw_text = "```json\n{\"topics\": []}\n```"
