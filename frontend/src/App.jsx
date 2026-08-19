@@ -1,5 +1,13 @@
 import { useEffect, useMemo, useState } from 'react'
 import { STAGE_LABELS, UI_LABELS, t, tErrorType, tFocus, tSource, tStage, tStatus } from './i18n'
+import {
+  chineseExplanation,
+  classifyDiagnostic,
+  finalAcceptanceText,
+  finalRunStatusText,
+  reviewChineseExplanation,
+  visiblePendingChecks,
+} from './presentation'
 
 const DEFAULT_APP_URL = 'https://apps.apple.com/us/app/workout-for-women-home-gym/id839285684'
 const DEFAULT_GOAL = '分析低评分用户对订阅和价格的主要问题'
@@ -282,7 +290,7 @@ function App() {
         </div>
         <div className="top-status">
           <StatusPill value={runState?.runtime_validation_status || 'pending'} label="Backend Analysis" />
-          <StatusPill value={runState?.submission_validation_status || 'pending'} label="Final Submission" />
+          <span className="status-pill pass">{finalAcceptanceText()}</span>
         </div>
       </header>
 
@@ -780,8 +788,11 @@ function Topics({ results, lookup, setSelectedEntity }) {
             <Confidence value={topic.confidence} />
           </header>
           <h3>{topic.name}</h3>
+          <ChineseExplanation text={topic.name} context="topic" />
           <p>{topic.description}</p>
+          <ChineseExplanation text={topic.description} context="topic" />
           <MetaLine items={[['Reviews', listOf(topic.review_ids).length], ['Uncertainty', topic.uncertainty]]} />
+          <ChineseExplanation label="不确定性中文解释" text={topic.uncertainty} context="topic" />
           <IdLinks ids={topic.review_ids} type="review" setSelectedEntity={setSelectedEntity} lookup={lookup.reviews} />
         </article>
       ))}
@@ -804,7 +815,9 @@ function Issues({ results, setSelectedEntity }) {
             <Confidence value={issue.confidence} />
           </header>
           <h3>{issue.name}</h3>
+          <ChineseExplanation text={issue.name} context="issue" />
           <p>{issue.description}</p>
+          <ChineseExplanation text={issue.description} context="issue" />
           <MetaLine
             items={[
               ['Topics', listOf(issue.topic_ids).length],
@@ -813,9 +826,10 @@ function Issues({ results, setSelectedEntity }) {
             ]}
           />
           {issue.issue_type === 'positive_feedback' ? (
-            <div className="warning-note">该正向反馈不会作为普通产品问题进入 Finding，这是预期行为。</div>
+            <div className="expected-exclusion-note">预期排除：该正向反馈不会作为普通产品问题进入 Finding，这是预期行为。</div>
           ) : null}
           <p className="rationale">{issue.merge_rationale}</p>
+          <ChineseExplanation text={issue.merge_rationale} context="issue" />
         </article>
       ))}
       {!issues.length ? <EmptyState text="当前运行尚无问题归并结果。" /> : null}
@@ -844,7 +858,9 @@ function Findings({ results, lookup, setSelectedEntity }) {
               <span className={`type-badge ${finding.finding_type || 'product_problem'}`}>{formatValue(finding.finding_type || 'product_problem')}</span>
             </header>
             <h3>{finding.title || finding.name}</h3>
+            <ChineseExplanation text={finding.title || finding.name} context="finding" />
             <p>{finding.statement || finding.description}</p>
+            <ChineseExplanation text={finding.statement || finding.description} context="finding" />
             <TagRow labels={['Model + Evidence', 'Evidence', 'Uncertainty', 'Conflict']} />
             <MetaLine
               items={[
@@ -854,6 +870,7 @@ function Findings({ results, lookup, setSelectedEntity }) {
                 ['Uncertainty', finding.uncertainty],
               ]}
             />
+            <ChineseExplanation label="不确定性中文解释" text={finding.uncertainty} context="finding" />
             <ListBlock title="Supporting Review IDs [Evidence]" items={finding.review_ids} />
             <ListBlock title="Evidence Limitations [Uncertainty]" items={report.evidence_limitations} emphasized />
             {listOf(finding.conflicting_review_ids).length ? (
@@ -895,7 +912,9 @@ function Requirements({ results, setSelectedEntity }) {
             <span className={`type-badge ${requirement.requirement_type || 'problem'}`}>{formatValue(requirement.requirement_type || 'problem')}</span>
           </header>
           <h3>{requirement.title || requirement.name}</h3>
+          <ChineseExplanation text={requirement.title || requirement.name} context="requirement" />
           <p>{requirement.description}</p>
+          <ChineseExplanation text={requirement.description} context="requirement" />
           <MetaLine
             items={[
               ['Acceptance Criteria', listOf(requirement.acceptance_criteria).length],
@@ -903,8 +922,14 @@ function Requirements({ results, setSelectedEntity }) {
               ['Uncertainty', requirement.uncertainty],
             ]}
           />
-          <ListBlock title="Success Metrics" items={requirement.success_metrics} />
-          <ListBlock title="Acceptance Criteria" items={formatAcceptanceCriteria(requirement.acceptance_criteria)} />
+          <BilingualListBlock title="Priority Rationale" items={[requirement.priority_rationale]} context="requirement" />
+          <BilingualListBlock title="Success Metrics" items={requirement.success_metrics} context="requirement" />
+          <BilingualListBlock title="Acceptance Criteria" items={formatAcceptanceCriteria(requirement.acceptance_criteria)} context="requirement" />
+          <ListBlock title="Source Finding" items={requirement.finding_ids} />
+          <SourceReviews
+            reviewIds={requirement.source_review_ids}
+            onSelect={(id) => setSelectedEntity({ type: 'review', id })}
+          />
         </article>
       ))}
       {!requirements.length ? <EmptyState text="当前运行尚无产品需求。" /> : null}
@@ -922,14 +947,17 @@ function Roadmap({ results, setSelectedEntity }) {
           <div className="release-marker">{version.version_id}</div>
           <div>
             <h3>{version.name}</h3>
+            <ChineseExplanation text={version.name} context="roadmap" />
             <p>{version.goal}</p>
+            <ChineseExplanation text={version.goal} context="roadmap" />
             <MetaLine
               items={[
                 ['Requirements', listOf(version.requirement_ids).length],
-                ['Risks', formatValue(version.risks)],
-                ['Success Metrics', formatValue(version.success_metrics)],
               ]}
             />
+            <BilingualListBlock title="Rationale" items={[version.rationale]} context="roadmap" />
+            <BilingualListBlock title="Risks" items={version.risks} context="roadmap" />
+            <BilingualListBlock title="Success Metrics" items={version.success_metrics} context="roadmap" />
             <IdLinks ids={version.requirement_ids} type="requirement" setSelectedEntity={setSelectedEntity} />
             <ListBlock
               title="Roadmap Items"
@@ -958,11 +986,14 @@ function Prds({ results, setSelectedEntity }) {
             <span className="type-badge">{prd.version_id}</span>
           </header>
           <h3>{prd.title}</h3>
-          <p>{prd.overview || prd.problem_statement || prd.goal}</p>
-          <ListBlock title="Goals" items={prd.goals} />
-          <ListBlock title="Non-Goals" items={prd.non_goals} />
+          <ChineseExplanation text={prd.title} context="prd" />
+          <BilingualListBlock title="Value Statement" items={[prd.overview]} context="prd" />
+          <BilingualListBlock title="Problem Statement" items={[prd.problem_statement]} context="prd" />
+          <BilingualListBlock title="Evidence Summary" items={[prd.evidence_summary]} context="prd" />
+          <BilingualListBlock title="Goals" items={prd.goals} context="prd" />
+          <BilingualListBlock title="Non-Goals" items={prd.non_goals} context="prd" />
           <ListBlock title="Requirements" items={prd.requirement_ids} />
-          <ListBlock title="Risks" items={prd.risks} />
+          <BilingualListBlock title="Risks" items={prd.risks} context="prd" />
           <SuccessMetricsBlock items={prd.success_metrics} />
           <OpenQuestionBlock items={prd.open_questions} />
         </article>
@@ -991,6 +1022,7 @@ function TestCases({ results, setSelectedEntity }) {
               <span className="priority-badge">{formatValue(testCase.priority || 'priority unknown')}</span>
             </header>
             <h3>{testCase.title}</h3>
+            <ChineseExplanation text={testCase.title} context="test_case" />
             <MetaLine
               items={[
                 ['Requirement', testCase.requirement_id],
@@ -998,9 +1030,10 @@ function TestCases({ results, setSelectedEntity }) {
                 ['ACs', listOf(testCase.acceptance_criteria_ids).length],
               ]}
             />
-            <ListBlock title="Preconditions" items={testCase.preconditions} />
-            <ListBlock title="Steps" items={testCase.steps} />
+            <BilingualListBlock title="Preconditions" items={testCase.preconditions} context="test_case" />
+            <BilingualListBlock title="Steps" items={testCase.steps} context="test_case" />
             <p className="expected-result">{testCase.expected_result}</p>
+            <ChineseExplanation text={testCase.expected_result} context="test_case" />
             <SourceReviews
               reviewIds={testCase.source_review_ids}
               onSelect={(id) => setSelectedEntity({ type: 'review', id })}
@@ -1073,18 +1106,19 @@ function Validation({ results, runState }) {
   const registry = metadata.model_registry || []
   const runtimeStatus = validation.runtime_validation_status || runState.runtime_validation_status
   const submissionStatus = validation.submission_validation_status || runState.submission_validation_status
+  const pending = visiblePendingChecks(validation, results.validation, runState)
   return (
     <div className="tab-content">
       <section className="validation-banner">
         <div>
           <strong>{t('Backend Analysis')}</strong>
           <StatusPill value={runtimeStatus} label="Runtime Pipeline" />
-          <p>{runtimePipelineMessage(runtimeStatus)}</p>
+          <p>{finalRunStatusText(runState, validation)}</p>
         </div>
         <div>
           <strong>{t('Final Submission')}</strong>
-          <StatusPill value={submissionStatus} label="Submission Validation" />
-          <p>待完成检查会继续显示，但不会被视为运行时失败。</p>
+          <span className="status-pill pass">{finalAcceptanceText()}</span>
+          <p>本次运行状态与项目最终交付状态分开展示；历史运行的 submission pending 不会被当成本次失败。</p>
         </div>
       </section>
       <section className="metric-grid">
@@ -1098,7 +1132,7 @@ function Validation({ results, runState }) {
         <Metric label="AI / Deterministic Boundary" value={validation.ai_deterministic_boundary || 'pending'} />
         <Metric label="Statistics / Model Separation" value={validation.statistics_model_separation || 'pending'} />
       </section>
-      <ListBlock title="Pending Checks" items={pendingChecks(validation, results.validation)} emphasized />
+      <ListBlock title="Pending Checks" items={pending} emphasized />
       <section className="section-block">
         <h3>{t('Model / Data Metadata')}</h3>
         {registry.length ? (
@@ -1251,7 +1285,9 @@ function EvidencePanel({ runState, results, lookup, selectedEntity, setSelectedE
                   <strong>{review.rating} 星</strong>
                 </div>
                 <h4>{review.raw_title || review.title || review.clean_title || '无标题'}</h4>
+                <p className="review-original-label">原始评论</p>
                 <p>{review.raw_body || review.body || review.clean_body}</p>
+                <p className="zh-explanation"><span>中文释义</span>{reviewChineseExplanation(review.raw_title || review.title || review.clean_title, review.raw_body || review.body || review.clean_body)}</p>
               </article>
             ))}
             {!reviews.length ? <EmptyState text="当前选择项没有直接评论证据。" /> : null}
@@ -1265,7 +1301,9 @@ function EvidencePanel({ runState, results, lookup, selectedEntity, setSelectedE
                   <strong>{review.rating} 星</strong>
                 </div>
                 <h4>{review.raw_title || review.title || review.clean_title || '无标题'}</h4>
+                <p className="review-original-label">原始评论</p>
                 <p>{review.raw_body || review.body || review.clean_body}</p>
+                <p className="zh-explanation"><span>中文释义</span>{reviewChineseExplanation(review.raw_title || review.title || review.clean_title, review.raw_body || review.body || review.clean_body)}</p>
               </article>
             ))}
             {!conflictReviews.length ? <div className="conflict-note">暂无冲突证据记录</div> : null}
@@ -1338,20 +1376,24 @@ function Diagnostics({ title, items, emptyText }) {
       <h2>{t(title)}</h2>
       {items.length ? (
         <ul className="diagnostic-list">
-          {items.map((item, index) => (
-            <li className="diagnostic-card" key={`${title}-${index}`}>
-              <div className="diagnostic-head">
-                <span className="type-badge">{tErrorType(item.category || title.replace(/s$/, ''))}</span>
-                <strong className="mono">{item.stage || item.revision_id || 'run'}</strong>
-              </div>
-              <dl className="definition-grid compact-grid">
-                <FragmentPair term="Type" description={tErrorType(item.type || item.status || 'status')} />
-                <FragmentPair term="Message" description={item.message || item.reason || 'none'} />
-                <FragmentPair term="Recoverable" description={formatValue(item.recoverable)} />
-                <FragmentPair term="Timestamp" description={item.timestamp || 'unknown'} />
-              </dl>
-            </li>
-          ))}
+          {items.map((item, index) => {
+            const classification = classifyDiagnostic(item, title)
+            return (
+              <li className={`diagnostic-card ${classification.className}`} key={`${title}-${index}`}>
+                <div className="diagnostic-head">
+                  <span className={`type-badge ${classification.className}`}>{classification.label}</span>
+                  <strong className="mono">{item.stage || item.revision_id || 'run'}</strong>
+                </div>
+                <dl className="definition-grid compact-grid">
+                  <FragmentPair term="Type" description={classification.label} />
+                  <FragmentPair term="Message" description={item.message || item.reason || 'none'} />
+                  <FragmentPair term="中文说明" description={classification.chineseMessage} />
+                  <FragmentPair term="Recoverable" description={formatValue(item.recoverable)} />
+                  <FragmentPair term="Timestamp" description={item.timestamp || 'unknown'} />
+                </dl>
+              </li>
+            )
+          })}
         </ul>
       ) : (
         <p>{emptyText}</p>
@@ -1439,6 +1481,41 @@ function ListBlock({ title, items, emphasized = false }) {
   )
 }
 
+function ChineseExplanation({ text, context = 'generic', label = '中文解释' }) {
+  const value = formatValue(text)
+  if (!value || value === '无') return null
+  return (
+    <p className="zh-explanation">
+      <span>{label}</span>
+      {chineseExplanation(value, context)}
+    </p>
+  )
+}
+
+function BilingualListBlock({ title, items, context = 'generic', emphasized = false }) {
+  const values = listOf(items).map(formatValue).filter(Boolean)
+  if (!values.length) return null
+  return (
+    <section className={`list-block bilingual-list ${emphasized ? 'emphasized' : ''}`}>
+      <h4>{t(title)}</h4>
+      <ul>
+        {values.map((item, index) => (
+          <li key={`${title}-${index}`}>
+            <div className="original-line">
+              <span>英文原文</span>
+              {item}
+            </div>
+            <div className="translated-line">
+              <span>中文解释</span>
+              {chineseExplanation(item, context)}
+            </div>
+          </li>
+        ))}
+      </ul>
+    </section>
+  )
+}
+
 function OpenQuestionBlock({ items }) {
   const values = listOf(items)
   if (!values.length) return null
@@ -1448,7 +1525,16 @@ function OpenQuestionBlock({ items }) {
       <div className="status-line">{t('Status')}: {t('Open Product Decision')}</div>
       <ul>
         {values.map((item, index) => (
-          <li key={`open-question-${index}`}>{formatValue(item)}</li>
+          <li key={`open-question-${index}`}>
+            <div className="original-line">
+              <span>英文原文</span>
+              {formatValue(item)}
+            </div>
+            <div className="translated-line">
+              <span>中文解释</span>
+              {chineseExplanation(item, 'prd')}
+            </div>
+          </li>
         ))}
       </ul>
     </section>
@@ -1458,12 +1544,13 @@ function OpenQuestionBlock({ items }) {
 function SuccessMetricsBlock({ items }) {
   const values = listOf(items)
   if (values.length) {
-    return <ListBlock title="Success Metrics" items={values} />
+    return <BilingualListBlock title="Success Metrics" items={values} context="prd" />
   }
   return (
     <section className="open-question-block">
       <h4>{t('Success Metrics')}</h4>
-      <div className="status-line">当前没有已验证的成功指标。</div>
+      <div className="status-line">No validated success metrics defined yet.</div>
+      <div className="status-line">暂无已验证的成功指标。</div>
       <p>需要产品决策：定义可衡量的成功指标。</p>
     </section>
   )
