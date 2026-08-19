@@ -24,6 +24,7 @@ from app.prd_validator import (
     PRDValidationResult,
     STATUS_INVALID_JSON,
     STATUS_SCHEMA_VALIDATION_FAILED,
+    _is_measurable_metric,
     validate_prd_output,
 )
 from app.topic_discovery import extract_json_text
@@ -66,6 +67,9 @@ Rules:
 27. If a metric concept is reasonable but the target value is a product decision, put that target definition in open_questions instead of inventing a number.
 28. For positive_feedback Requirements, do not use vague preservation metrics such as "remains high", "remains stable", or "maintain satisfaction" unless the input defines the measurement and target; otherwise leave success_metrics empty and put the metric definition in open_questions.
 29. Do not copy input Requirement or Version success_metrics blindly. Re-include only metrics that satisfy Rules 25-28; move unsupported metric definitions or targets to open_questions.
+30. The input marks validated_success_metric_candidates and unsupported_success_metric_candidates. You may include only validated_success_metric_candidates in success_metrics.
+31. Never include any metric listed in unsupported_success_metric_candidates in success_metrics. Convert it into an open question asking how the metric should be measured.
+32. A phrase shaped like "User satisfaction with <topic>" is not a valid success metric unless it explicitly says user-reported rate, count, score, rating, survey result, or another observable measurement.
 
 Return only JSON matching the existing PRD schema."""
 
@@ -201,6 +205,7 @@ def build_prd_request(
                 for finding_id in requirement.get("finding_ids", [])
                 if isinstance(finding_id, str)
             ]
+            metric_candidates = _split_success_metric_candidates(requirement.get("success_metrics"))
             version_requirements.append(
                 {
                     "requirement_id": requirement_id,
@@ -211,6 +216,8 @@ def build_prd_request(
                     "priority": requirement.get("priority"),
                     "risks": requirement.get("risks"),
                     "success_metrics": requirement.get("success_metrics"),
+                    "validated_success_metric_candidates": metric_candidates["validated"],
+                    "unsupported_success_metric_candidates": metric_candidates["unsupported"],
                     "uncertainty": requirement.get("uncertainty"),
                     "source_review_ids": requirement.get("source_review_ids"),
                     "findings": [
@@ -223,6 +230,7 @@ def build_prd_request(
                     ],
                 }
             )
+        version_metric_candidates = _split_success_metric_candidates(version.get("success_metrics"))
         version_payload.append(
             {
                 "version_id": version_id,
@@ -233,6 +241,8 @@ def build_prd_request(
                 "rationale": version.get("rationale"),
                 "risks": version.get("risks"),
                 "success_metrics": version.get("success_metrics"),
+                "validated_success_metric_candidates": version_metric_candidates["validated"],
+                "unsupported_success_metric_candidates": version_metric_candidates["unsupported"],
                 "required_open_questions": _required_open_questions_for_requirements(version_requirements),
                 "requirements": version_requirements,
             }
@@ -267,6 +277,7 @@ def build_prd_request(
             },
             "goal_alignment_rule": "For each PRD, goals[0] must exactly equal the matching validated_versions[].required_prd_goal. Additional goals may expand that Version goal but must not replace it.",
             "success_metric_rule": "Every success metric must be phrased as an observable metric using rate, count, number, score, rating, survey, user-reported signal, time, percentage, retention, conversion, decrease, increase, reduction, complaints, reports, incidents, reviews, or a numeric unit. A score-based metric is valid only when it names what score or rating is being observed, such as user satisfaction score with workout content. For satisfaction or feedback concepts, prefer user-reported satisfaction/feedback rate/count/score/rating instead of vague satisfaction wording or standalone phrases like user feedback on clarity. Avoid vague standalone metrics such as remains high, remains stable, maintain satisfaction, improved trust, improved user experience, better satisfaction, user feedback on clarity, user satisfaction with support improves, or increase engagement. If the only supported concept is satisfaction or feedback but no score/rating/rate/count/survey/user-reported measurement is defined, do not include it in success_metrics; put the measurement definition in open_questions. Do not copy input success_metrics unless they satisfy this rule. Do not invent target numbers such as 10%, 20%, 30%, or 50% unless those numbers exist in the input. If no reliable metric is supported, return success_metrics: [] and add an open question for metric definition or target.",
+            "unsupported_metric_rule": "Metrics listed in unsupported_success_metric_candidates are known non-measurable or underdefined inputs. Do not include those exact strings in PRD success_metrics. Keep their measurement uncertainty in open_questions instead. Example: 'User satisfaction with workout relevance' must not be a success metric unless rewritten as an explicit user-reported satisfaction score/rating/rate or survey measure supported by the input.",
         },
         ensure_ascii=False,
         indent=2,
@@ -395,6 +406,14 @@ def _metrics_for_version(version: dict[str, Any]) -> list[str]:
     if metrics:
         return metrics
     return []
+
+
+def _split_success_metric_candidates(value: Any) -> dict[str, list[str]]:
+    metrics = [_text(item) for item in value if _text(item)] if isinstance(value, list) else []
+    return {
+        "validated": [metric for metric in metrics if _is_measurable_metric(metric)],
+        "unsupported": [metric for metric in metrics if not _is_measurable_metric(metric)],
+    }
 
 
 def _open_questions_for_requirements(requirements: list[dict[str, Any]]) -> list[str]:
