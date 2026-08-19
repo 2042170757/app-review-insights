@@ -9,6 +9,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from app.cli_i18n import line, stage_result
 from app.issue_consolidation import DEFAULT_ANALYSIS_DIR
 from app.llm.base import MissingAPIKeyError, ModelRequestError
 from app.llm.deepseek_provider import DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL
@@ -94,16 +95,16 @@ def main() -> int:
             )
 
     if result.generation_passed:
-        print("Roadmap Generation: PASS")
+        print(stage_result("Roadmap Generation", "PASS"))
     else:
-        print("Roadmap Generation: FAIL")
-        print(f"Failure Type: {result.generation_status}")
-    print(f"Provider: {result.provider}")
-    print(f"Model: {result.model}")
-    print(f"Version Count: {len(result.roadmap.get('versions', []))}")
-    print(f"Roadmap Item Count: {len(result.roadmap.get('roadmap_items', []))}")
-    print(f"Deferred Count: {len(result.validation.deferred_requirement_ids)}")
-    print(f"Validation: {'PASS' if result.validation.passed else result.validation.status}")
+        print(stage_result("Roadmap Generation", "FAIL"))
+        print(line("Failure Type", result.generation_status))
+    print(line("Provider", result.provider))
+    print(line("Model", result.model))
+    print(line("Version Count", len(result.roadmap.get("versions", []))))
+    print(line("Roadmap Item Count", len(result.roadmap.get("roadmap_items", []))))
+    print(line("Deferred Count", len(result.validation.deferred_requirement_ids)))
+    print(line("Validation", "PASS" if result.validation.passed else result.validation.status))
     for version in result.roadmap.get("versions", []):
         print(f"version_id: {version['version_id']}")
         print(f"name: {version['name']}")
@@ -114,7 +115,7 @@ def main() -> int:
         print(f"roadmap_item: {item['requirement_id']} {item['version_id']} {item['priority']}")
     for error in result.validation.errors:
         print(f"- {error}")
-    print("Output files:")
+    print("输出文件：")
     for label, path in result.saved_paths.items():
         print(f"{label}: {path}")
     return 0 if result.generation_passed and result.validation.passed else 1

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from app.cli_i18n import line, stage_result
 from app.issue_consolidation import DEFAULT_ANALYSIS_DIR
 from app.llm.base import MissingAPIKeyError, ModelRequestError
 from app.llm.deepseek_provider import DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL
@@ -109,24 +110,24 @@ def main() -> int:
                 is_mock=False,
             )
 
-    print(f"Test Case Generation: {'PASS' if result.generation_passed else 'FAIL'}")
+    print(stage_result("Test Case Generation", "PASS" if result.generation_passed else "FAIL"))
     if not result.generation_passed:
-        print(f"Failure Type: {result.generation_status}")
-    print(f"Provider: {result.provider}")
-    print(f"Model: {result.model}")
-    print(f"Test Case Count: {len(result.test_cases)}")
-    print(f"Total Requirements: {result.coverage.total_requirements}")
-    print(f"Covered Requirements: {result.coverage.covered_requirements}")
-    print(f"Requirement Coverage: {result.coverage.requirement_coverage:.1f}%")
-    print(f"Total Acceptance Criteria: {result.coverage.total_acceptance_criteria}")
-    print(f"Covered Acceptance Criteria: {result.coverage.covered_acceptance_criteria}")
-    print(f"Acceptance Criteria Coverage: {result.coverage.acceptance_criteria_coverage:.1f}%")
-    print(f"Validation: {'PASS' if result.validation.passed else 'FAIL'}")
+        print(line("Failure Type", result.generation_status))
+    print(line("Provider", result.provider))
+    print(line("Model", result.model))
+    print(line("Test Case Count", len(result.test_cases)))
+    print(line("Total Requirements", result.coverage.total_requirements))
+    print(line("Covered Requirements", result.coverage.covered_requirements))
+    print(line("Requirement Coverage", f"{result.coverage.requirement_coverage:.1f}%"))
+    print(line("Total Acceptance Criteria", result.coverage.total_acceptance_criteria))
+    print(line("Covered Acceptance Criteria", result.coverage.covered_acceptance_criteria))
+    print(line("Acceptance Criteria Coverage", f"{result.coverage.acceptance_criteria_coverage:.1f}%"))
+    print(line("Validation", "PASS" if result.validation.passed else "FAIL"))
     if not result.validation.passed:
-        print(f"Validation Status: {result.validation.status}")
+        print(line("Validation Status", result.validation.status))
     for error in result.validation.errors:
         print(f"- {error}")
-    print("Output files:")
+    print("输出文件：")
     for label, path in result.saved_paths.items():
         print(f"{label}: {path}")
     return 0 if result.generation_passed and result.validation.passed else 1

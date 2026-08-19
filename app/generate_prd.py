@@ -9,6 +9,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from app.cli_i18n import line, stage_result
 from app.issue_consolidation import DEFAULT_ANALYSIS_DIR
 from app.llm.base import MissingAPIKeyError, ModelRequestError
 from app.llm.deepseek_provider import DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL
@@ -121,16 +122,16 @@ def main() -> int:
             )
 
     if result.generation_passed:
-        print("PRD Generation: PASS")
+        print(stage_result("PRD Generation", "PASS"))
     else:
-        print("PRD Generation: FAIL")
-        print(f"Failure Type: {result.generation_status}")
-    print(f"Provider: {result.provider}")
-    print(f"Model: {result.model}")
-    print(f"PRD Count: {len(result.prds)}")
-    print(f"Validation: {'PASS' if result.validation.passed else 'FAIL'}")
+        print(stage_result("PRD Generation", "FAIL"))
+        print(line("Failure Type", result.generation_status))
+    print(line("Provider", result.provider))
+    print(line("Model", result.model))
+    print(line("PRD Count", len(result.prds)))
+    print(line("Validation", "PASS" if result.validation.passed else "FAIL"))
     if not result.validation.passed:
-        print(f"Validation Status: {result.validation.status}")
+        print(line("Validation Status", result.validation.status))
     for prd in result.prds:
         print(f"prd_id: {prd['prd_id']}")
         print(f"version_id: {prd['version_id']}")
@@ -141,7 +142,7 @@ def main() -> int:
         print(f"open_question_count: {len(prd['open_questions'])}")
     for error in result.validation.errors:
         print(f"- {error}")
-    print("Output files:")
+    print("输出文件：")
     for label, path in result.saved_paths.items():
         print(f"{label}: {path}")
     return 0 if result.generation_passed and result.validation.passed else 1

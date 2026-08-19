@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from app.analysis_intent import DEFAULT_ANALYSIS_FOCUS, focus_label, normalize_analysis_focus
+from app.cli_i18n import line, stage_result, value
 from app.finding_eligibility import evaluate_finding_eligibilities
 from app.issue_consolidation import DEFAULT_ANALYSIS_DIR
 from app.issue_type import classify_issues
@@ -35,25 +36,25 @@ def main() -> int:
             analysis_focus=analysis_focus,
         )
     except ValueError as exc:
-        print("Issue Classification: FAIL")
-        print(f"Error: {exc}")
+        print(stage_result("Issue Classification", "FAIL"))
+        print(line("Error", exc))
         return 1
 
     paths = save_outputs(classifications, eligibility, analysis_focus=analysis_focus, output_dir=args.output_dir)
     classification_distribution = Counter(item.issue_type for item in classifications)
     eligibility_distribution = Counter(item.eligible_for_finding for item in eligibility)
 
-    print("Issue Classification: PASS")
-    print(f"Analysis Focus: {analysis_focus} ({focus_label(analysis_focus)})")
+    print(stage_result("Issue Classification", "PASS"))
+    print(f"{line('Analysis Focus', analysis_focus)} ({focus_label(analysis_focus)})")
     for item in classifications:
-        print(f"{item.issue_id} {item.issue_type}")
-    print("Finding Eligibility: PASS")
-    print(f"Eligible: {eligibility_distribution[True]}")
-    print(f"Ineligible: {eligibility_distribution[False]}")
-    print("Issue Type Distribution:")
+        print(f"{item.issue_id} {value(item.issue_type)}")
+    print(stage_result("Finding Eligibility", "PASS"))
+    print(line("Eligible", eligibility_distribution[True]))
+    print(line("Ineligible", eligibility_distribution[False]))
+    print("问题类型分布：")
     for issue_type, count in sorted(classification_distribution.items()):
-        print(f"{issue_type}: {count}")
-    print("Output files:")
+        print(f"{value(issue_type)}: {count}")
+    print("输出文件：")
     for label, path in paths.items():
         print(f"{label}: {path}")
     return 0

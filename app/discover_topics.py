@@ -8,6 +8,7 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from app.cli_i18n import line, stage_result, value
 from app.llm.base import (
     MissingAPIKeyError,
     ModelAuthenticationError,
@@ -93,32 +94,32 @@ def main() -> int:
         )
 
     if result.passed:
-        print("Topic Discovery: PASS")
-        print(f"Provider: {result.provider}")
-        print(f"Model: {result.model}")
-        print(f"Topic Count: {len(result.topics)}")
-        print("Validation: PASS")
+        print(stage_result("Topic Discovery", "PASS"))
+        print(line("Provider", result.provider))
+        print(line("Model", result.model))
+        print(line("Topic Count", len(result.topics)))
+        print(line("Validation", "PASS"))
         for topic in result.topics:
             print(f"topic_id: {topic.topic_id}")
             print(f"name: {topic.name}")
             print(f"review_count: {len(topic.review_ids)}")
             print(f"confidence: {topic.confidence}")
             print(f"uncertainty: {topic.uncertainty}")
-        print("Output files:")
+        print("输出文件：")
         for label, path in result.saved_paths.items():
             print(f"{label}: {path}")
         return 0
 
-    print("Topic Discovery: FAIL")
-    print(f"Provider: {result.provider}")
-    print(f"Model: {result.model}")
-    print(f"Failure Type: {result.status}")
+    print(stage_result("Topic Discovery", "FAIL"))
+    print(line("Provider", result.provider))
+    print(line("Model", result.model))
+    print(line("Failure Type", result.status))
     if result.error:
-        print(f"Message: {result.error}")
-    print(f"Validation: {result.validation.status}")
+        print(line("Message", result.error))
+    print(line("Validation", value(result.validation.status)))
     for error in result.validation.errors:
         print(f"- {error}")
-    print("Output files:")
+    print("输出文件：")
     for label, path in result.saved_paths.items():
         print(f"{label}: {path}")
     return 1

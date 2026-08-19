@@ -9,6 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from app.analysis_intent import DEFAULT_ANALYSIS_FOCUS, normalize_analysis_focus
+from app.cli_i18n import line, stage_result
 from app.issue_consolidation import (
     DEFAULT_ANALYSIS_DIR,
     DEFAULT_ISSUE_GOAL,
@@ -41,9 +42,9 @@ def main() -> int:
     try:
         analysis_focus = normalize_analysis_focus(args.analysis_focus)
     except ValueError as exc:
-        print("Issue Consolidation: FAIL")
-        print(f"Failure Type: Invalid Analysis Focus")
-        print(f"Message: {exc}")
+        print(stage_result("Issue Consolidation", "FAIL"))
+        print(line("Failure Type", "Invalid Analysis Focus"))
+        print(line("Message", exc))
         return 1
     reviews = load_processed_reviews(args.reviews)
     topics = load_topics(args.topics)
@@ -97,13 +98,13 @@ def main() -> int:
             )
 
     if result.passed:
-        print("Issue Consolidation: PASS")
-        print(f"Provider: {result.provider}")
-        print(f"Model: {result.model}")
-        print(f"Analysis Focus: {result.analysis_focus}")
-        print(f"Issue Count: {len(result.issues)}")
-        print(f"Unmerged Topic Count: {len(result.unmerged_topic_ids)}")
-        print("Validation: PASS")
+        print(stage_result("Issue Consolidation", "PASS"))
+        print(line("Provider", result.provider))
+        print(line("Model", result.model))
+        print(line("Analysis Focus", result.analysis_focus))
+        print(line("Issue Count", len(result.issues)))
+        print(line("Unmerged Topic Count", len(result.unmerged_topic_ids)))
+        print(line("Validation", "PASS"))
         for issue in result.issues:
             print(f"issue_id: {issue.issue_id}")
             print(f"name: {issue.name}")
@@ -113,19 +114,19 @@ def main() -> int:
             print(f"uncertainty: {issue.uncertainty}")
             print(f"merge_rationale: {issue.merge_rationale}")
     else:
-        print("Issue Consolidation: FAIL")
-        print(f"Provider: {result.provider}")
-        print(f"Model: {result.model}")
-        print(f"Analysis Focus: {result.analysis_focus}")
-        print(f"Issue Count: {len(result.issues)}")
-        print(f"Unmerged Topic Count: {len(result.unmerged_topic_ids)}")
-        print(f"Validation: {result.validation.status}")
-        print(f"Failure Type: {result.status}")
+        print(stage_result("Issue Consolidation", "FAIL"))
+        print(line("Provider", result.provider))
+        print(line("Model", result.model))
+        print(line("Analysis Focus", result.analysis_focus))
+        print(line("Issue Count", len(result.issues)))
+        print(line("Unmerged Topic Count", len(result.unmerged_topic_ids)))
+        print(line("Validation", result.validation.status))
+        print(line("Failure Type", result.status))
         if result.error:
-            print(f"Message: {result.error}")
+            print(line("Message", result.error))
         for error in result.validation.errors:
             print(f"- {error}")
-    print("Output files:")
+    print("输出文件：")
     for label, path in result.saved_paths.items():
         print(f"{label}: {path}")
     return 0 if result.passed else 1

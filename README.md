@@ -120,22 +120,22 @@ npm run build
 在 UI 中选择：
 
 ```text
-Mode: Live Analysis
-Data Source: App Store
+运行模式: 实时分析
+数据来源: App Store 实时数据
 App Store URL: https://apps.apple.com/us/app/workout-for-women-home-gym/id839285684
-Analysis Goal: 分析低评分用户对订阅和价格的主要问题
-Analysis Focus: 产品问题
-Rating Constraint: 全部评分
+分析目标: 分析低评分用户对订阅和价格的主要问题
+分析方向: 产品问题
+分析范围限制: 全部评分
 ```
 
 然后点击“开始分析”。
 
-也可以把 Rating Constraint 设置为 `1-2 Stars`，系统会显示：
+也可以把“分析范围限制”设置为 `1-2 星`，系统会显示：
 
-- Reviews Collected
-- Reviews In Scope
-- Excluded by Constraint
-- Constraint
+- 采集评论数
+- 纳入分析评论数
+- 被分析范围排除数量
+- 范围限制
 
 并保证 Topic / Finding / Requirement 使用的 evidence 不来自被排除的 Review。
 
@@ -144,50 +144,50 @@ Rating Constraint: 全部评分
 UI 支持：
 
 - App Store URL 输入
-- Analysis Goal 输入
-- Analysis Focus 选择
-- Rating Constraint 选择
-- Data Source 选择
-- Start Analysis
-- Workflow Progress
-- Intermediate Results
-- Errors / Warnings / Revisions
-- Evidence Drill-down
-- Traceability
-- Runtime Validation
-- Submission Validation
+- 分析目标输入
+- 分析方向选择
+- 分析范围限制选择
+- 数据来源选择
+- 开始分析
+- 工作流进度
+- 中间结果
+- 错误 / 警告 / 修订记录
+- 证据下钻
+- 可追溯性
+- 运行时验证
+- 最终交付验证
 
 完整 Workflow：
 
 ```text
-Scope
-Collection
-Processing
-Topic Discovery
-Issue Consolidation
-Finding Generation
-Requirement Generation
-Roadmap
-PRD
-Test Case
-Traceability
+分析范围
+评论采集
+评论清洗与处理
+动态主题发现
+问题归并
+证据驱动分析
+产品需求生成
+版本规划
+PRD 生成
+测试用例生成
+全链路追溯
 ```
 
 Dashboard 页面包括：
 
-- Overview
-- Reviews
-- Processing
-- Topics
-- Issues
-- Findings
-- Requirements
-- Roadmap
-- PRDs
-- Test Cases
-- Traceability
-- Validation
-- Diagnostics
+- 总览
+- 用户评论
+- 清洗处理
+- 主题
+- 问题归并
+- 分析发现
+- 产品需求
+- 版本规划
+- 产品需求文档
+- 测试用例
+- 可追溯性
+- 验证
+- 诊断
 
 ## Analysis Focus
 
@@ -243,19 +243,19 @@ UI 支持上传 JSON 或 CSV 评论数据。
 
 操作：
 
-1. 选择 `Live Analysis`。
-2. 选择 `JSON` 或 `CSV`。
+1. 选择 `实时分析`。
+2. 选择 `JSON 导入` 或 `CSV 导入`。
 3. 上传文件。
-4. 查看 Preview。
-5. 确认 Record Count、Valid Count、Invalid Count、Warnings。
+4. 查看导入预览。
+5. 确认记录数、有效记录、无效记录、警告。
 6. 点击“开始分析”。
 
 导入数据会标记为：
 
-- Imported JSON
-- Imported CSV
+- JSON 导入
+- CSV 导入
 
-Imported Dataset 不等于 App Store Live Collection。如果导入数据没有 territory，UI 显示：
+导入数据集不等于 App Store 实时采集。如果导入数据没有 territory，UI 显示：
 
 ```text
 Unknown / Not provided
@@ -417,7 +417,7 @@ PRD 必须包含：
 如果没有可靠的可衡量指标，允许 `success_metrics = []`，UI 显示：
 
 ```text
-No validated success metrics defined yet.
+当前没有已验证的成功指标。
 ```
 
 未由 evidence 支持的目标数值必须进入 Open Questions，不能编造无依据百分比目标。
@@ -540,13 +540,13 @@ Model Registry 记录：
 
 Cached Demo 用于离线演示：
 
-- 明确显示 Cached / Demo Data。
-- 显示 Built-in Demo Cache。
+- 明确显示缓存演示数据。
+- 显示项目内置缓存。
 - 不调用 Apify。
 - 不调用 DeepSeek。
 - 使用独立 Demo Run。
 - 不污染 Live Run。
-- 不是 Live Failure 的 fallback。
+- 不是实时分析失败后的 fallback。
 
 Demo 数据位于：
 

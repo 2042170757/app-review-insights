@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Any
 
+from app.cli_i18n import label, line, value
 from app.model_registry import (
     audit_ai_deterministic_boundary,
     audit_failure_state_registry,
@@ -297,33 +298,33 @@ def audit_exam_requirements(
 
 
 def print_report(result: FinalValidationResult) -> None:
-    print("Phase 8 Final Validation")
+    print(label("Phase 8 Final Validation"))
     print("========================")
-    print(f"Forward Traceability: {result.forward_traceability}")
-    print(f"Backward Traceability: {result.backward_traceability}")
-    print(f"Artifact Consistency: {result.artifact_consistency}")
-    print(f"Evidence Traceability: {result.evidence_traceability}")
-    print(f"Explicit Test Case -> Review Link: {result.explicit_test_case_review_link}")
-    print(f"Statistics / Model Separation: {result.statistics_model_separation}")
-    print(f"Failure State Audit: {result.failure_state_audit}")
-    print(f"Uncertainty / Conflict Audit: {result.uncertainty_conflict_audit}")
-    print(f"AI / Deterministic Boundary: {result.ai_deterministic_boundary}")
-    print(f"Generalization: {result.generalization}")
-    print(f"Exam Requirement Coverage: {result.exam_requirement_coverage}%")
+    print(line("Forward Traceability", result.forward_traceability))
+    print(line("Backward Traceability", result.backward_traceability))
+    print(line("Artifact Consistency", result.artifact_consistency))
+    print(line("Evidence Traceability", result.evidence_traceability))
+    print(line("Explicit Test Case -> Review Link", result.explicit_test_case_review_link))
+    print(line("Statistics / Model Separation", result.statistics_model_separation))
+    print(line("Failure State Audit", result.failure_state_audit))
+    print(line("Uncertainty / Conflict Audit", result.uncertainty_conflict_audit))
+    print(line("AI / Deterministic Boundary", result.ai_deterministic_boundary))
+    print(line("Generalization", result.generalization))
+    print(line("Exam Requirement Coverage", f"{result.exam_requirement_coverage}%"))
     print()
-    print(f"Downstream Safety: {result.downstream_safety}")
+    print(line("Downstream Safety", result.downstream_safety))
     print()
-    print("Counts:")
+    print("数量统计：")
     for key, value in result.counts.items():
-        print(f"- {key}: {value}")
+        print(f"- {label(key)}: {value}")
     print()
-    print("Critical Issues:")
+    print("阻断问题：")
     _print_items(result.critical_issues)
     print()
-    print("Non-blocking Issues:")
+    print("非阻断问题：")
     _print_items(result.non_blocking_issues)
     print()
-    print("Missing Final Deliverables:")
+    print("缺失最终交付项：")
     _print_items(result.missing_final_deliverables)
 
 
@@ -331,10 +332,10 @@ def main() -> int:
     try:
         result = run_final_validation(root=Path("."))
     except Exception as exc:
-        print("Phase 8 Final Validation")
+        print(label("Phase 8 Final Validation"))
         print("========================")
-        print("Artifact Consistency: FAIL")
-        print(f"Critical Issues: {exc!r}")
+        print(line("Artifact Consistency", "FAIL"))
+        print(line("Critical Issues", repr(exc)))
         return 1
     print_report(result)
     return 0 if result.downstream_safety == "PASS" else 1
@@ -365,10 +366,10 @@ def _load_optional(path: Path) -> dict[str, Any] | None:
 
 def _print_items(items: list[str]) -> None:
     if not items:
-        print("- None")
+        print("- 无")
         return
     for item in items:
-        print(f"- {item}")
+        print(f"- {value(item)}")
 
 
 def _review(review_id: str, app_id: str, territory: str, title: str, body: str, rating: int) -> dict[str, Any]:

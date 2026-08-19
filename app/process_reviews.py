@@ -6,6 +6,7 @@ import argparse
 import json
 from pathlib import Path
 
+from app.cli_i18n import line, stage_result
 from app.review_processing import (
     DEFAULT_INPUT_PATH,
     DEFAULT_NEAR_DUPLICATE_THRESHOLD,
@@ -36,18 +37,18 @@ def main() -> int:
         )
         output_paths = write_processing_outputs(result, output_dir=args.output_dir)
     except Exception as exc:
-        print("Pipeline: FAIL")
-        print(f"Error: {exc!r}")
+        print(stage_result("Pipeline", "FAIL"))
+        print(line("Error", repr(exc)))
         return 1
 
-    print("Pipeline: PASS")
-    print(f"Input: {result.report.input_count}")
-    print(f"Valid: {result.report.valid_count}")
-    print(f"Retained: {result.report.retained_count}")
-    print(f"Duplicates: {result.report.exact_duplicate_count}")
-    print("Statistics:")
+    print(stage_result("Pipeline", "PASS"))
+    print(line("Input", result.report.input_count))
+    print(line("Valid", result.report.valid_count))
+    print(line("Retained", result.report.retained_count))
+    print(line("Duplicates", result.report.exact_duplicate_count))
+    print("统计信息：")
     print(json.dumps(result.statistics, ensure_ascii=False, indent=2))
-    print("Output files:")
+    print("输出文件：")
     for label, path in output_paths.items():
         print(f"{label}: {path}")
     return 0
@@ -55,4 +56,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

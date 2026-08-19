@@ -10,6 +10,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from app.analysis_intent import DEFAULT_ANALYSIS_FOCUS, normalize_analysis_focus
+from app.cli_i18n import line, stage_result
 from app.issue_consolidation import DEFAULT_ANALYSIS_DIR
 from app.llm.base import MissingAPIKeyError, ModelRequestError
 from app.llm.deepseek_provider import DEEPSEEK_MODEL, DEFAULT_DEEPSEEK_MODEL
@@ -45,9 +46,9 @@ def main() -> int:
     try:
         analysis_focus = normalize_analysis_focus(args.analysis_focus)
     except ValueError as exc:
-        print("Requirement Generation: FAIL")
-        print("Failure Type: Invalid Analysis Focus")
-        print(f"Message: {exc}")
+        print(stage_result("Requirement Generation", "FAIL"))
+        print(line("Failure Type", "Invalid Analysis Focus"))
+        print(line("Message", exc))
         return 1
     findings = load_findings(args.findings)
     finding_validation = load_finding_validation(args.finding_validation)
@@ -101,19 +102,19 @@ def main() -> int:
             )
 
     if result.generation_passed:
-        print("Requirement Generation: PASS")
+        print(stage_result("Requirement Generation", "PASS"))
     else:
-        print("Requirement Generation: FAIL")
-        print(f"Failure Type: {result.generation_status}")
-    print(f"Provider: {result.provider}")
-    print(f"Model: {result.model}")
-    print(f"Analysis Focus: {result.analysis_focus}")
-    print(f"Requirement Count: {len(result.requirements)}")
-    print(f"Input Findings: {result.input_finding_count}")
-    print(f"Validation: {'PASS' if result.validation.passed else result.validation.status}")
+        print(stage_result("Requirement Generation", "FAIL"))
+        print(line("Failure Type", result.generation_status))
+    print(line("Provider", result.provider))
+    print(line("Model", result.model))
+    print(line("Analysis Focus", result.analysis_focus))
+    print(line("Requirement Count", len(result.requirements)))
+    print(line("Input Findings", result.input_finding_count))
+    print(line("Validation", "PASS" if result.validation.passed else result.validation.status))
     json_recovery = result.json_recovery or {}
-    print(f"Retry Attempted: {json_recovery.get('retry_attempted', False)}")
-    print(f"Retry Success: {json_recovery.get('retry_success', False)}")
+    print(line("Retry Attempted", json_recovery.get("retry_attempted", False)))
+    print(line("Retry Success", json_recovery.get("retry_success", False)))
     for requirement in result.requirements:
         print(f"requirement_id: {requirement['requirement_id']}")
         print(f"requirement_type: {requirement.get('requirement_type', 'problem')}")
@@ -125,7 +126,7 @@ def main() -> int:
         print(f"uncertainty: {requirement['uncertainty']}")
     for error in result.validation.errors:
         print(f"- {error}")
-    print("Output files:")
+    print("输出文件：")
     for label, path in result.saved_paths.items():
         print(f"{label}: {path}")
     return 0 if result.generation_passed and result.validation.passed else 1

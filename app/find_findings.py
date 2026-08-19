@@ -12,6 +12,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from app.analysis_intent import DEFAULT_ANALYSIS_FOCUS, normalize_analysis_focus
+from app.cli_i18n import line, stage_result, value
 from app.finding_generation import (
     DEFAULT_FINDING_GOAL,
     build_finding_request,
@@ -49,9 +50,9 @@ def main() -> int:
     try:
         analysis_focus = normalize_analysis_focus(args.analysis_focus)
     except ValueError as exc:
-        print("Finding Generation: FAIL")
-        print("Failure Type: Invalid Analysis Focus")
-        print(f"Message: {exc}")
+        print(stage_result("Finding Generation", "FAIL"))
+        print(line("Failure Type", "Invalid Analysis Focus"))
+        print(line("Message", exc))
         return 1
     reviews = load_reviews(args.reviews)
     issues = load_issues(args.issues)
@@ -110,16 +111,16 @@ def main() -> int:
             )
 
     if result.generation_passed:
-        print("Finding Generation: PASS")
+        print(stage_result("Finding Generation", "PASS"))
     else:
-        print("Finding Generation: FAIL")
-        print(f"Failure Type: {result.generation_status}")
-    print(f"Provider: {result.provider}")
-    print(f"Model: {result.model}")
-    print(f"Analysis Focus: {result.analysis_focus}")
-    print(f"Finding Count: {len(result.findings)}")
-    print(f"Eligibility Checked: {result.eligible_issue_count}")
-    print(f"Validation: {'PASS' if result.validation.passed else result.validation.status}")
+        print(stage_result("Finding Generation", "FAIL"))
+        print(line("Failure Type", result.generation_status))
+    print(line("Provider", result.provider))
+    print(line("Model", result.model))
+    print(line("Analysis Focus", result.analysis_focus))
+    print(line("Finding Count", len(result.findings)))
+    print(line("Eligibility Checked", result.eligible_issue_count))
+    print(line("Validation", "PASS" if result.validation.passed else value(result.validation.status)))
     evidence_by_id = {report["finding_id"]: report for report in result.evidence_reports}
     for finding in result.findings:
         report = evidence_by_id.get(finding["finding_id"], {})
@@ -135,7 +136,7 @@ def main() -> int:
         print(f"uncertainty: {finding['uncertainty']}")
     for error in result.validation.errors:
         print(f"- {error}")
-    print("Output files:")
+    print("输出文件：")
     for label, path in result.saved_paths.items():
         print(f"{label}: {path}")
     return 0 if result.generation_passed and result.validation.passed else 1

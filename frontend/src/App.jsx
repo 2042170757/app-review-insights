@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { STAGE_LABELS, UI_LABELS, t, tErrorType, tFocus, tSource, tStage, tStatus } from './i18n'
 
 const DEFAULT_APP_URL = 'https://apps.apple.com/us/app/workout-for-women-home-gym/id839285684'
 const DEFAULT_GOAL = '分析低评分用户对订阅和价格的主要问题'
@@ -7,23 +8,23 @@ const DEMO_APP_URL = DEFAULT_APP_URL
 const DEMO_GOAL = DEFAULT_GOAL
 const DEMO_ANALYSIS_FOCUS = DEFAULT_ANALYSIS_FOCUS
 const analysisFocusOptions = [
-  { value: 'problem_analysis', label: 'Product Problems' },
-  { value: 'positive_feedback_analysis', label: 'Positive Feedback' },
-  { value: 'mixed_analysis', label: 'Problems + Positive Feedback' },
+  { value: 'problem_analysis', label: tFocus('problem_analysis') },
+  { value: 'positive_feedback_analysis', label: tFocus('positive_feedback_analysis') },
+  { value: 'mixed_analysis', label: tFocus('mixed_analysis') },
 ]
 const ratingConstraintOptions = [
-  { value: 'all', label: 'All Ratings', constraints: {} },
-  { value: '1-2', label: '1-2 Stars', constraints: { rating: { min: 1, max: 2 } } },
-  { value: '1-3', label: '1-3 Stars', constraints: { rating: { min: 1, max: 3 } } },
-  { value: '4-5', label: '4-5 Stars', constraints: { rating: { min: 4, max: 5 } } },
+  { value: 'all', label: '全部评分', constraints: {} },
+  { value: '1-2', label: '1-2 星', constraints: { rating: { min: 1, max: 2 } } },
+  { value: '1-3', label: '1-3 星', constraints: { rating: { min: 1, max: 3 } } },
+  { value: '4-5', label: '4-5 星', constraints: { rating: { min: 4, max: 5 } } },
 ]
 
 const statusMeta = {
-  pending: { symbol: '○', label: 'Pending' },
-  running: { symbol: '●', label: 'Running' },
-  completed: { symbol: '✓', label: 'Completed' },
-  failed: { symbol: '✕', label: 'Failed' },
-  skipped: { symbol: '⊘', label: 'Skipped' },
+  pending: { symbol: '○', label: tStatus('pending') },
+  running: { symbol: '●', label: tStatus('running') },
+  completed: { symbol: '✓', label: tStatus('completed') },
+  failed: { symbol: '✕', label: tStatus('failed') },
+  skipped: { symbol: '⊘', label: tStatus('skipped') },
 }
 
 const resultEndpoints = {
@@ -44,19 +45,19 @@ const resultEndpoints = {
 }
 
 const tabs = [
-  { id: 'overview', label: 'Overview' },
-  { id: 'reviews', label: 'Reviews' },
-  { id: 'processing', label: 'Processing' },
-  { id: 'topics', label: 'Topics' },
-  { id: 'issues', label: 'Issues' },
-  { id: 'findings', label: 'Findings' },
-  { id: 'requirements', label: 'Requirements' },
-  { id: 'roadmap', label: 'Roadmap' },
-  { id: 'prd', label: 'PRDs' },
-  { id: 'testCases', label: 'Test Cases' },
-  { id: 'traceability', label: 'Traceability' },
-  { id: 'validation', label: 'Validation' },
-  { id: 'diagnostics', label: 'Diagnostics' },
+  { id: 'overview', label: t('Overview') },
+  { id: 'reviews', label: t('Reviews') },
+  { id: 'processing', label: t('Processing') },
+  { id: 'topics', label: t('Topics') },
+  { id: 'issues', label: t('Issues') },
+  { id: 'findings', label: t('Findings') },
+  { id: 'requirements', label: t('Requirements') },
+  { id: 'roadmap', label: t('Roadmap') },
+  { id: 'prd', label: t('PRDs') },
+  { id: 'testCases', label: t('Test Cases') },
+  { id: 'traceability', label: t('Traceability') },
+  { id: 'validation', label: t('Validation') },
+  { id: 'diagnostics', label: t('Diagnostics') },
 ]
 
 function App() {
@@ -125,7 +126,7 @@ function App() {
       const response = sourceType === 'app_store' ? await createAppStoreRun() : await createImportRun()
       const payload = await response.json()
       if (!response.ok) {
-        throw new Error(formatApiError(payload.detail || 'Unable to create run'))
+        throw new Error(formatApiError(payload.detail || '无法创建运行'))
       }
       setRunId(payload.run_id)
       await refreshRun(payload.run_id)
@@ -140,7 +141,7 @@ function App() {
     const response = await fetch('/api/demo/run')
     const payload = await response.json()
     if (!response.ok) {
-      throw new Error(formatApiError(payload.detail || 'Unable to load cached demo run'))
+      throw new Error(formatApiError(payload.detail || '无法加载缓存演示运行'))
     }
     return payload
   }
@@ -161,7 +162,7 @@ function App() {
 
   async function createImportRun() {
     if (!importPreview?.import_id) {
-      throw new Error('Import preview is required before starting analysis.')
+      throw new Error('开始分析前必须先完成导入文件预览。')
     }
     const constraints = constraintsForRating(ratingConstraint)
     return fetch('/api/runs/import', {
@@ -214,7 +215,7 @@ function App() {
     if (!file) return
     const expectedExtension = sourceType === 'json' ? '.json' : '.csv'
     if (!file.name.toLowerCase().endsWith(expectedExtension)) {
-      setImportError({ type: 'Invalid Extension', message: `Expected a ${expectedExtension} file.` })
+      setImportError({ type: 'Invalid Extension', message: `请上传 ${expectedExtension} 文件。` })
       return
     }
     setIsImporting(true)
@@ -228,7 +229,7 @@ function App() {
       })
       const payload = await response.json()
       if (!response.ok) {
-        throw new Error(formatApiError(payload.detail || 'Import failed'))
+        throw new Error(formatApiError(payload.detail || '导入失败'))
       }
       setImportPreview(payload)
     } catch (error) {
@@ -245,7 +246,7 @@ function App() {
       const response = await fetch(`/api/runs/${targetRunId}`)
       const payload = await response.json()
       if (!response.ok) {
-        throw new Error(payload.detail || 'Unable to load run')
+        throw new Error(payload.detail || '无法加载运行')
       }
       setRunState(payload)
       if (!selectedStageId && payload.stages?.length) {
@@ -276,8 +277,8 @@ function App() {
     <main className="app-shell">
       <header className="topbar">
         <div>
-          <h1>AI Product Review Analysis Workbench</h1>
-          <p>App Store review pipeline dashboard with evidence drill-down and traceability.</p>
+          <h1>{UI_LABELS.appTitle}</h1>
+          <p>{UI_LABELS.appSubtitle}</p>
         </div>
         <div className="top-status">
           <StatusPill value={runState?.runtime_validation_status || 'pending'} label="Backend Analysis" />
@@ -288,7 +289,7 @@ function App() {
       <section className="control-strip">
         <form onSubmit={startRun} className="run-form">
           <label className="field app-url">
-            <span>{runMode === 'demo' ? 'Demo App URL' : sourceType === 'app_store' ? 'App Store URL' : 'App Context URL'}</span>
+            <span>{runMode === 'demo' ? UI_LABELS.demoAppUrl : sourceType === 'app_store' ? UI_LABELS.appStoreUrl : UI_LABELS.appContextUrl}</span>
             <input
               value={appUrl}
               onChange={(event) => handleAppUrlChange(event.target.value)}
@@ -297,7 +298,7 @@ function App() {
             />
           </label>
           <label className="field goal">
-            <span>Analysis Goal</span>
+            <span>{UI_LABELS.analysisGoal}</span>
             <textarea
               value={analysisGoal}
               onChange={(event) => setAnalysisGoal(event.target.value)}
@@ -307,7 +308,7 @@ function App() {
             />
           </label>
           <label className="field focus-field">
-            <span>Analysis Focus</span>
+            <span>{UI_LABELS.analysisFocus}</span>
             <select
               value={analysisFocus}
               onChange={(event) => setAnalysisFocus(event.target.value)}
@@ -321,7 +322,7 @@ function App() {
             </select>
           </label>
           <label className="field constraint-field">
-            <span>Analysis Constraints</span>
+            <span>{UI_LABELS.analysisConstraints}</span>
             <select
               value={ratingConstraint}
               onChange={(event) => setRatingConstraint(event.target.value)}
@@ -335,7 +336,7 @@ function App() {
             </select>
           </label>
           <fieldset className="source-group">
-            <legend>Mode</legend>
+            <legend>{UI_LABELS.mode}</legend>
             <label>
               <input
                 type="radio"
@@ -344,7 +345,7 @@ function App() {
                 checked={runMode === 'live'}
                 onChange={(event) => handleRunModeChange(event.target.value)}
               />
-              <span>Live Analysis</span>
+              <span>{UI_LABELS.liveAnalysis}</span>
             </label>
             <label>
               <input
@@ -354,11 +355,11 @@ function App() {
                 checked={runMode === 'demo'}
                 onChange={(event) => handleRunModeChange(event.target.value)}
               />
-              <span>Cached Demo</span>
+              <span>{UI_LABELS.cachedDemo}</span>
             </label>
           </fieldset>
           <fieldset className="source-group">
-            <legend>Data Source</legend>
+            <legend>{UI_LABELS.dataSource}</legend>
             <label>
               <input
                 type="radio"
@@ -368,7 +369,7 @@ function App() {
                 onChange={(event) => handleSourceChange(event.target.value)}
                 disabled={runMode === 'demo'}
               />
-              <span>App Store</span>
+              <span>App Store 实时数据</span>
             </label>
             <label>
               <input
@@ -379,7 +380,7 @@ function App() {
                 onChange={(event) => handleSourceChange(event.target.value)}
                 disabled={runMode === 'demo'}
               />
-              <span>JSON</span>
+              <span>JSON 导入</span>
             </label>
             <label>
               <input
@@ -390,15 +391,15 @@ function App() {
                 onChange={(event) => handleSourceChange(event.target.value)}
                 disabled={runMode === 'demo'}
               />
-              <span>CSV</span>
+              <span>CSV 导入</span>
             </label>
           </fieldset>
           <div className="actions">
             <button type="submit" disabled={isSubmitting || isImporting || (runMode === 'live' && sourceType !== 'app_store' && !importPreview?.import_id)}>
-              {isSubmitting ? 'Creating Run...' : runMode === 'demo' ? 'Load Cached Demo' : '开始分析'}
+              {isSubmitting ? UI_LABELS.creatingRun : runMode === 'demo' ? UI_LABELS.loadCachedDemo : UI_LABELS.startAnalysis}
             </button>
             <button type="button" className="secondary" onClick={() => refreshRun()} disabled={!runId}>
-              Refresh
+              {UI_LABELS.refresh}
             </button>
           </div>
           {runMode === 'demo' ? <DemoModeNotice compact /> : null}
@@ -421,13 +422,13 @@ function App() {
       <section className="run-header">
         <Metric label="Run Status" value={runState?.status || 'not_started'} />
         <Metric label="Mode" value={results.metadata?.data?.display_source || (runMode === 'demo' ? 'Cached / Demo Data' : 'Live Analysis')} />
-        <Metric label="Current Stage" value={runState?.current_stage || 'none'} />
+        <Metric label="Current Stage" value={runState?.current_stage || 'none'} valueFormatter={tStage} />
         <Metric label="Run ID" value={runState?.run_id || 'none'} mono />
         <Metric label="App ID" value={runState?.app_id || 'unknown'} />
         <Metric label="Review Territory" value={results.metadata?.data?.territory || results.reviews?.dataset_metadata?.territory || runState?.storefront || 'US'} />
         <div className="progress-block">
           <div className="progress-label">
-            <span>Overall Progress</span>
+            <span>{t('Overall Progress')}</span>
             <strong>{progressValue.toFixed(1)}%</strong>
           </div>
           <div className="progress-track">
@@ -439,7 +440,7 @@ function App() {
 
       <section className="dashboard-grid">
         <aside className="workflow-pane">
-          <h2>Workflow Timeline</h2>
+          <h2>{t('Workflow Timeline')}</h2>
           <StageList
             stages={runState?.stages || []}
             selectedStageId={selectedStage?.stage}
@@ -449,7 +450,7 @@ function App() {
         </aside>
 
         <section className="results-pane">
-          <nav className="tabs" aria-label="Result sections">
+          <nav className="tabs" aria-label="结果分区">
             {tabs.map((tab) => (
               <button
                 type="button"
@@ -486,9 +487,9 @@ function App() {
       </section>
 
       <section className="diagnostics-panel">
-        <Diagnostics title="Errors" items={results.diagnostics?.errors || runState?.errors || []} emptyText="No errors" />
-        <Diagnostics title="Warnings" items={results.warnings?.warnings || runState?.warnings || []} emptyText="No warnings" />
-        <Diagnostics title="Revisions" items={results.revisions?.revisions || runState?.revisions || []} emptyText="No revisions recorded" />
+        <Diagnostics title="Errors" items={results.diagnostics?.errors || runState?.errors || []} emptyText="暂无错误" />
+        <Diagnostics title="Warnings" items={results.warnings?.warnings || runState?.warnings || []} emptyText="暂无警告" />
+        <Diagnostics title="Revisions" items={results.revisions?.revisions || runState?.revisions || []} emptyText="暂无修订记录" />
       </section>
     </main>
   )
@@ -496,11 +497,11 @@ function App() {
 
 function ImportPanel({ sourceType, importFile, importPreview, importError, isImporting, onFileChange }) {
   const metadata = importPreview?.metadata || {}
-  const sourceLabel = sourceType === 'json' ? 'Imported JSON' : 'Imported CSV'
+  const sourceLabel = sourceType === 'json' ? 'JSON 导入' : 'CSV 导入'
   return (
     <section className="import-panel">
       <label className="field">
-        <span>{sourceType === 'json' ? 'JSON File' : 'CSV File'}</span>
+        <span>{sourceType === 'json' ? UI_LABELS.jsonFile : UI_LABELS.csvFile}</span>
         <input type="file" accept={sourceType === 'json' ? '.json,application/json' : '.csv,text/csv'} onChange={onFileChange} />
       </label>
       <div className="import-preview">
@@ -511,14 +512,14 @@ function ImportPanel({ sourceType, importFile, importPreview, importError, isImp
           <FragmentPair term="Record Count" description={formatValue(metadata.record_count)} />
           <FragmentPair term="Valid Count" description={formatValue(metadata.valid_count)} />
           <FragmentPair term="Invalid Count" description={formatValue(metadata.invalid_count)} />
-          <FragmentPair term="Territory" description={metadata.territory || 'Unknown / Not provided'} />
+          <FragmentPair term="Territory" description={metadata.territory || UI_LABELS.unknownNotProvided} />
           <FragmentPair term="App ID" description={metadata.app_id || 'none'} />
         </dl>
-        {isImporting ? <div className="message">Import validation running...</div> : null}
+        {isImporting ? <div className="message">{UI_LABELS.importPreviewRunning}</div> : null}
         {importError ? (
           <div className="message error-message">
-            <strong>Import Error</strong>
-            <span>{importError.type}: {importError.message}</span>
+            <strong>{UI_LABELS.importError}</strong>
+            <span>{tErrorType(importError.type)}: {importError.message}</span>
           </div>
         ) : null}
         {importPreview ? <ListBlock title="Warnings" items={importPreview.warnings} emphasized /> : null}
@@ -530,9 +531,9 @@ function ImportPanel({ sourceType, importFile, importPreview, importError, isImp
 function DemoModeNotice({ compact = false }) {
   return (
     <section className={compact ? 'demo-notice compact' : 'demo-notice'}>
-      <strong>⚠ Cached / Demo Data</strong>
-      <span>当前结果来自项目内置缓存，仅用于离线演示。切换到 Live Analysis 后，系统会处理新的输入数据。</span>
-      <span>Demo Mode 不会调用 Apify 或 DeepSeek，并非当前实时抓取结果。</span>
+      <strong>缓存演示数据</strong>
+      <span>当前结果来自项目内置缓存，仅用于离线演示，不代表实时 App Store 数据。</span>
+      <span>缓存演示不会调用 Apify 或 DeepSeek，也不会作为实时分析失败后的自动回退。</span>
     </section>
   )
 }
@@ -544,11 +545,11 @@ function ModeBanner({ runState, results, runMode }) {
     return (
       <section className="mode-banner demo-banner">
         <div>
-          <strong>⚠ Cached / Demo Data</strong>
-          <span>这是项目内置缓存结果，用于离线演示。并非当前实时抓取结果。</span>
+          <strong>缓存演示数据</strong>
+          <span>当前结果来自项目内置缓存，仅用于离线演示，不代表实时 App Store 数据。</span>
         </div>
         <dl className="banner-facts">
-          <FragmentPair term="Provider" description={metadata.provider || 'apify'} />
+          <FragmentPair term="Data Source" description={metadata.provider || 'apify'} />
           <FragmentPair term="Territory" description={metadata.territory || 'US'} />
           <FragmentPair term="App ID" description={metadata.app_id || runState?.app_id || '839285684'} />
         </dl>
@@ -557,15 +558,15 @@ function ModeBanner({ runState, results, runMode }) {
   }
   return (
     <section className="mode-banner live-banner">
-      <strong>● Live Analysis</strong>
-      <span>实时分析模式不会自动回退到缓存演示结果。</span>
+      <strong>实时分析</strong>
+      <span>系统将使用当前配置的数据源和模型实时执行分析；失败时不会自动回退到缓存演示数据。</span>
     </section>
   )
 }
 
 function DashboardTab({ tab, runState, results, lookup, filters, setFilters, setSelectedEntity, setSelectedTab }) {
   if (!runState) {
-    return <EmptyState text="Start an analysis run to load dashboard results." />
+    return <EmptyState text="开始一次分析运行后，将在这里显示结果。" />
   }
   if (tab === 'overview') return <Overview results={results} runState={runState} />
   if (tab === 'reviews') {
@@ -582,7 +583,7 @@ function DashboardTab({ tab, runState, results, lookup, filters, setFilters, set
   if (tab === 'traceability') return <Traceability results={results} lookup={lookup} setSelectedEntity={setSelectedEntity} />
   if (tab === 'validation') return <Validation results={results} runState={runState} />
   if (tab === 'diagnostics') return <DiagnosticsTab results={results} runState={runState} />
-  return <EmptyState text="Unknown dashboard section." />
+  return <EmptyState text="未知结果分区。" />
 }
 
 function Overview({ results, runState }) {
@@ -622,7 +623,7 @@ function Overview({ results, runState }) {
         <Distribution title="Language Distribution" data={stats.language_distribution} sourceLabel="Deterministic Statistics" />
       </section>
       <section className="section-block">
-        <h3>Run Metadata</h3>
+        <h3>{t('Run Metadata')}</h3>
         <TagRow labels={['Evidence', 'Deterministic', 'Model + Evidence', 'Uncertainty', 'Conflict']} />
         <dl className="definition-grid">
           <FragmentPair term="Analysis Goal" description={runState.analysis_goal} />
@@ -631,13 +632,13 @@ function Overview({ results, runState }) {
           <FragmentPair term="Average Rating" description={formatValue(stats.average_rating)} />
           <FragmentPair
             term="Data Source"
-            description={results.metadata?.data?.display_source || results.reviews?.dataset_metadata?.display_source || results.reviews?.dataset_metadata?.provider || runState.source_type || 'artifact snapshot'}
+            description={tSource(results.metadata?.data?.display_source || results.reviews?.dataset_metadata?.display_source || results.reviews?.dataset_metadata?.provider || runState.source_type || 'artifact snapshot')}
           />
           <FragmentPair term="App Context" description={results.metadata?.data?.app_context || runState.app_url} />
           <FragmentPair term="Review Territory" description={results.metadata?.data?.territory || results.reviews?.dataset_metadata?.territory || runState.storefront || 'US'} />
           <FragmentPair
             term="Scope Summary"
-            description={`${formatValue(scope.selected_count ?? metadata.reviews_in_scope)} in scope; ${formatValue(scope.excluded_count ?? metadata.reviews_excluded_by_constraint)} excluded by analysis constraint`}
+            description={`${formatValue(scope.selected_count ?? metadata.reviews_in_scope)} 条纳入分析；${formatValue(scope.excluded_count ?? metadata.reviews_excluded_by_constraint)} 条被分析范围排除`}
           />
         </dl>
       </section>
@@ -667,9 +668,9 @@ function Reviews({ results, filters, setFilters, setSelectedEntity }) {
     <div className="tab-content">
       <div className="filter-row">
         <label>
-          Rating
+          {t('Rating')}
           <select value={filters.rating} onChange={(event) => setFilters({ ...filters, rating: event.target.value, page: 1 })}>
-            <option value="all">All</option>
+            <option value="all">全部</option>
             {[1, 2, 3, 4, 5].map((rating) => (
               <option value={String(rating)} key={rating}>
                 {rating}
@@ -678,12 +679,12 @@ function Reviews({ results, filters, setFilters, setSelectedEntity }) {
           </select>
         </label>
         <label>
-          Language
+          {t('Language')}
           <select
             value={filters.language}
             onChange={(event) => setFilters({ ...filters, language: event.target.value, page: 1 })}
           >
-            <option value="all">All</option>
+            <option value="all">全部</option>
             {languages.map((language) => (
               <option value={language} key={language}>
                 {language}
@@ -692,30 +693,30 @@ function Reviews({ results, filters, setFilters, setSelectedEntity }) {
           </select>
         </label>
         <label className="search-field">
-          Search
+          {t('Search')}
           <input
             value={filters.search}
             onChange={(event) => setFilters({ ...filters, search: event.target.value, page: 1 })}
-            placeholder="Review text or ID"
+            placeholder="评论正文或评论 ID"
           />
         </label>
       </div>
       <div className="data-note">
-        Review Territory = {results.metadata?.data?.territory || results.reviews?.dataset_metadata?.territory || 'Unknown / Not provided'} ·
-        Source = {results.metadata?.data?.display_source || results.reviews?.dataset_metadata?.display_source || results.reviews?.source || 'artifact API'}
+        评论地区 = {results.metadata?.data?.territory || results.reviews?.dataset_metadata?.territory || UI_LABELS.unknownNotProvided} ·
+        数据来源 = {tSource(results.metadata?.data?.display_source || results.reviews?.dataset_metadata?.display_source || results.reviews?.source || 'artifact API')}
       </div>
       <div className="table-wrap">
         <table>
           <thead>
             <tr>
-              <th>Review ID</th>
-              <th>Rating</th>
-              <th>Title</th>
-              <th>Body</th>
-              <th>Date</th>
-              <th>Language</th>
-              <th>Territory</th>
-              <th>App ID</th>
+              <th>{t('Review ID')}</th>
+              <th>{t('Rating')}</th>
+              <th>{t('Title')}</th>
+              <th>{t('Body')}</th>
+              <th>{t('Date')}</th>
+              <th>{t('Language')}</th>
+              <th>{t('Territory')}</th>
+              <th>{t('App ID')}</th>
             </tr>
           </thead>
           <tbody>
@@ -723,10 +724,10 @@ function Reviews({ results, filters, setFilters, setSelectedEntity }) {
               <tr key={review.id} onClick={() => setSelectedEntity({ type: 'review', id: review.id })}>
                 <td className="mono">{review.id}</td>
                 <td>{review.rating}</td>
-                <td>{review.raw_title || review.title || review.clean_title || 'null'}</td>
+                <td>{review.raw_title || review.title || review.clean_title || '无标题'}</td>
                 <td>{truncate(review.raw_body || review.body || review.clean_body, 130)}</td>
                 <td>{review.created_at}</td>
-                <td>{review.language || 'unknown'}</td>
+                <td>{review.language || '未知'}</td>
                 <td>{review.territory || 'US'}</td>
                 <td>{review.app_id}</td>
               </tr>
@@ -734,7 +735,7 @@ function Reviews({ results, filters, setFilters, setSelectedEntity }) {
           </tbody>
         </table>
       </div>
-      {!visible.length ? <EmptyState text="No reviews match the current filters." /> : null}
+      {!visible.length ? <EmptyState text="没有符合当前筛选条件的评论。" /> : null}
       <Pagination page={page} pageCount={pageCount} onPage={(next) => setFilters({ ...filters, page: next })} />
     </div>
   )
@@ -784,7 +785,7 @@ function Topics({ results, lookup, setSelectedEntity }) {
           <IdLinks ids={topic.review_ids} type="review" setSelectedEntity={setSelectedEntity} lookup={lookup.reviews} />
         </article>
       ))}
-      {!topics.length ? <EmptyState text="Topics are not available for this run yet." /> : null}
+      {!topics.length ? <EmptyState text="当前运行尚无主题结果。" /> : null}
     </div>
   )
 }
@@ -799,7 +800,7 @@ function Issues({ results, setSelectedEntity }) {
             <button type="button" className="link-button" onClick={() => setSelectedEntity({ type: 'issue', id: issue.issue_id })}>
               {issue.issue_id}
             </button>
-            <span className={`type-badge ${issue.issue_type || 'unknown'}`}>{issue.issue_type || 'unknown'}</span>
+            <span className={`type-badge ${issue.issue_type || 'unknown'}`}>{formatValue(issue.issue_type || 'unknown')}</span>
             <Confidence value={issue.confidence} />
           </header>
           <h3>{issue.name}</h3>
@@ -812,12 +813,12 @@ function Issues({ results, setSelectedEntity }) {
             ]}
           />
           {issue.issue_type === 'positive_feedback' ? (
-            <div className="warning-note">Not eligible for normal Finding</div>
+            <div className="warning-note">该正向反馈不会作为普通产品问题进入 Finding，这是预期行为。</div>
           ) : null}
           <p className="rationale">{issue.merge_rationale}</p>
         </article>
       ))}
-      {!issues.length ? <EmptyState text="Issues are not available for this run yet." /> : null}
+      {!issues.length ? <EmptyState text="当前运行尚无问题归并结果。" /> : null}
     </div>
   )
 }
@@ -840,7 +841,7 @@ function Findings({ results, lookup, setSelectedEntity }) {
                 {finding.finding_id}
               </button>
               <Confidence value={finding.confidence} />
-              <span className={`type-badge ${finding.finding_type || 'product_problem'}`}>{finding.finding_type || 'product_problem'}</span>
+              <span className={`type-badge ${finding.finding_type || 'product_problem'}`}>{formatValue(finding.finding_type || 'product_problem')}</span>
             </header>
             <h3>{finding.title || finding.name}</h3>
             <p>{finding.statement || finding.description}</p>
@@ -858,20 +859,20 @@ function Findings({ results, lookup, setSelectedEntity }) {
             {listOf(finding.conflicting_review_ids).length ? (
               <ListBlock title="Conflicting Evidence [Conflict]" items={finding.conflicting_review_ids} emphasized />
             ) : (
-              <div className="conflict-note">[Conflict] No conflicting evidence recorded</div>
+              <div className="conflict-note">[冲突证据] 暂无冲突证据记录</div>
             )}
             <button
               type="button"
               className="secondary compact"
               onClick={() => setSelectedEntity({ type: 'finding', id: finding.finding_id })}
             >
-              View Evidence
+              {t('View Evidence')}
             </button>
             <IdLinks ids={finding.review_ids} type="review" setSelectedEntity={setSelectedEntity} />
           </article>
         )
       })}
-      {!findings.length ? <EmptyState text="Findings are not available for this run yet." /> : null}
+      {!findings.length ? <EmptyState text="当前运行尚无分析发现。" /> : null}
     </div>
   )
 }
@@ -890,8 +891,8 @@ function Requirements({ results, setSelectedEntity }) {
             >
               {requirement.requirement_id}
             </button>
-            <span className="priority-badge">{requirement.priority || requirement.final_priority || 'priority unknown'}</span>
-            <span className={`type-badge ${requirement.requirement_type || 'problem'}`}>{requirement.requirement_type || 'problem'}</span>
+            <span className="priority-badge">{formatValue(requirement.priority || requirement.final_priority || 'priority unknown')}</span>
+            <span className={`type-badge ${requirement.requirement_type || 'problem'}`}>{formatValue(requirement.requirement_type || 'problem')}</span>
           </header>
           <h3>{requirement.title || requirement.name}</h3>
           <p>{requirement.description}</p>
@@ -906,7 +907,7 @@ function Requirements({ results, setSelectedEntity }) {
           <ListBlock title="Acceptance Criteria" items={formatAcceptanceCriteria(requirement.acceptance_criteria)} />
         </article>
       ))}
-      {!requirements.length ? <EmptyState text="Requirements are not available for this run yet." /> : null}
+      {!requirements.length ? <EmptyState text="当前运行尚无产品需求。" /> : null}
     </div>
   )
 }
@@ -934,12 +935,12 @@ function Roadmap({ results, setSelectedEntity }) {
               title="Roadmap Items"
               items={roadmapItems
                 .filter((item) => item.version_id === version.version_id)
-                .map((item) => `${item.requirement_id} · ${item.priority || 'priority unknown'} · ${item.rationale || ''}`)}
+                .map((item) => `${item.requirement_id} · ${formatValue(item.priority || 'priority unknown')} · ${item.rationale || ''}`)}
             />
           </div>
         </article>
       ))}
-      {!versions.length ? <EmptyState text="Roadmap is not available for this run yet." /> : null}
+      {!versions.length ? <EmptyState text="当前运行尚无版本规划。" /> : null}
     </div>
   )
 }
@@ -966,7 +967,7 @@ function Prds({ results, setSelectedEntity }) {
           <OpenQuestionBlock items={prd.open_questions} />
         </article>
       ))}
-      {!prds.length ? <EmptyState text="PRDs are not available for this run yet." /> : null}
+      {!prds.length ? <EmptyState text="当前运行尚无 PRD。" /> : null}
     </div>
   )
 }
@@ -987,7 +988,7 @@ function TestCases({ results, setSelectedEntity }) {
               >
                 {testCase.test_case_id}
               </button>
-              <span className="priority-badge">{testCase.priority || 'priority unknown'}</span>
+              <span className="priority-badge">{formatValue(testCase.priority || 'priority unknown')}</span>
             </header>
             <h3>{testCase.title}</h3>
             <MetaLine
@@ -1007,7 +1008,7 @@ function TestCases({ results, setSelectedEntity }) {
           </article>
         ))}
       </div>
-      {!cases.length ? <EmptyState text="Test cases are not available for this run yet." /> : null}
+      {!cases.length ? <EmptyState text="当前运行尚无测试用例。" /> : null}
     </div>
   )
 }
@@ -1026,17 +1027,17 @@ function Traceability({ results, lookup, setSelectedEntity }) {
     <div className="tab-content">
       <div className="trace-grid">
         <section className="section-block">
-          <h3>Entity Selector</h3>
+          <h3>{t('Entity Selector')}</h3>
           <div className="id-cloud">
             {candidates.slice(0, 120).map(([label, type, id]) => (
               <button type="button" className="id-chip" key={`${type}-${id}`} onClick={() => setSelectedEntity({ type, id })}>
-                {label}: {id}
+                {t(label)}: {id}
               </button>
             ))}
           </div>
         </section>
         <section className="section-block">
-          <h3>Graph Health</h3>
+          <h3>{t('Graph Health')}</h3>
           <StatusPill value={results.traceability?.validation?.runtime_validation_status || 'pending'} label="Runtime" />
           <KeyValuePanel title="Validation Counts" data={results.traceability?.validation?.counts || {}} />
         </section>
@@ -1050,7 +1051,7 @@ function SourceReviews({ reviewIds, onSelect }) {
   const ids = listOf(reviewIds)
   return (
     <section className="source-reviews-block">
-      <h4>Source Reviews</h4>
+      <h4>{t('Source Reviews')}</h4>
       {ids.length ? (
         <div className="id-cloud compact-cloud">
           {ids.map((id) => (
@@ -1060,7 +1061,7 @@ function SourceReviews({ reviewIds, onSelect }) {
           ))}
         </div>
       ) : (
-        <p className="muted">No source reviews linked.</p>
+        <p className="muted">暂无来源评论关联。</p>
       )}
     </section>
   )
@@ -1076,14 +1077,14 @@ function Validation({ results, runState }) {
     <div className="tab-content">
       <section className="validation-banner">
         <div>
-          <strong>Backend Analysis</strong>
+          <strong>{t('Backend Analysis')}</strong>
           <StatusPill value={runtimeStatus} label="Runtime Pipeline" />
           <p>{runtimePipelineMessage(runtimeStatus)}</p>
         </div>
         <div>
-          <strong>Final Submission</strong>
+          <strong>{t('Final Submission')}</strong>
           <StatusPill value={submissionStatus} label="Submission Validation" />
-          <p>Pending checks remain visible and are not treated as runtime failure.</p>
+          <p>待完成检查会继续显示，但不会被视为运行时失败。</p>
         </div>
       </section>
       <section className="metric-grid">
@@ -1099,7 +1100,7 @@ function Validation({ results, runState }) {
       </section>
       <ListBlock title="Pending Checks" items={pendingChecks(validation, results.validation)} emphasized />
       <section className="section-block">
-        <h3>Model / Data Metadata</h3>
+        <h3>{t('Model / Data Metadata')}</h3>
         {registry.length ? (
           registry.map((item, index) => (
             <dl className="definition-grid compact-grid" key={`${item.provider}-${index}`}>
@@ -1113,7 +1114,7 @@ function Validation({ results, runState }) {
             </dl>
           ))
         ) : (
-          <EmptyState text="Model metadata is not available yet." />
+          <EmptyState text="当前暂无模型元信息。" />
         )}
       </section>
       <KeyValuePanel title="Validation Report" data={validation} />
@@ -1130,20 +1131,20 @@ function DiagnosticsTab({ results, runState }) {
     <div className="tab-content">
       <FailurePropagationNotice diagnostics={diagnostics} runState={runState} inPanel />
       <section className="three-column">
-        <Diagnostics title="Errors" items={diagnostics.errors || runState.errors || []} emptyText="No errors" />
-        <Diagnostics title="Warnings" items={warnings.warnings || runState.warnings || []} emptyText="No warnings" />
-        <Diagnostics title="Revisions" items={revisions.revisions || runState.revisions || []} emptyText="No revisions recorded" />
+        <Diagnostics title="Errors" items={diagnostics.errors || runState.errors || []} emptyText="暂无错误" />
+        <Diagnostics title="Warnings" items={warnings.warnings || runState.warnings || []} emptyText="暂无警告" />
+        <Diagnostics title="Revisions" items={revisions.revisions || runState.revisions || []} emptyText="暂无修订记录" />
       </section>
       <section className="section-block">
-        <h3>Data Metadata</h3>
+        <h3>{t('Data Metadata')}</h3>
         <TagRow labels={['Evidence', metadata.data?.artifact_source || 'Run Artifact Snapshot', metadata.data?.cached_label || metadata.data?.display_source || 'Run Data']} />
         <dl className="definition-grid">
-          <FragmentPair term="Data Source" description={metadata.data?.display_source || metadata.data?.provider || 'unknown'} />
-          <FragmentPair term="Review Source" description={metadata.data?.review_source || metadata.data?.display_source || 'unknown'} />
+          <FragmentPair term="Data Source" description={tSource(metadata.data?.display_source || metadata.data?.provider || 'unknown')} />
+          <FragmentPair term="Review Source" description={tSource(metadata.data?.review_source || metadata.data?.display_source || 'unknown')} />
           <FragmentPair term="App Context" description={metadata.data?.app_context || runState.app_url || 'unknown'} />
           <FragmentPair term="Analysis Focus" description={analysisFocusLabel(metadata.data?.analysis_focus || runState.analysis_focus)} />
           <FragmentPair term="Filename" description={metadata.data?.filename || 'none'} />
-          <FragmentPair term="Territory" description={metadata.data?.territory || 'Unknown / Not provided'} />
+          <FragmentPair term="Territory" description={metadata.data?.territory || UI_LABELS.unknownNotProvided} />
           <FragmentPair term="App ID" description={metadata.data?.app_id || runState.app_id || 'unknown'} />
           <FragmentPair term="Collection Time" description={metadata.data?.collection_time || 'unknown'} />
           <FragmentPair term="Requested Limit" description={formatValue(metadata.data?.requested_limit)} />
@@ -1155,7 +1156,7 @@ function DiagnosticsTab({ results, runState }) {
         <ListBlock title="Limitations [Uncertainty]" items={metadata.data?.limitations} emphasized />
       </section>
       <section className="section-block">
-        <h3>Model Metadata</h3>
+        <h3>{t('Model Metadata')}</h3>
         <TagRow labels={['Model-generated', 'No API Key Displayed']} />
         {(metadata.model?.model_registry || []).map((item, index) => (
           <dl className="definition-grid compact-grid" key={`${item.task || item.provider}-${index}`}>
@@ -1179,11 +1180,11 @@ function FailurePropagationNotice({ diagnostics, runState, inPanel = false }) {
   if (!propagation?.has_failure) return null
   return (
     <section className={`failure-propagation ${inPanel ? 'in-panel' : ''}`}>
-      <strong>Failure Propagation</strong>
+      <strong>{t('Failure Propagation')}</strong>
       <p>{propagation.message || `由于 ${propagation.failed_stage} 阶段失败，后续阶段未执行。`}</p>
       <MetaLine
         items={[
-          ['Failed Stage', propagation.failed_stage],
+          ['Failed Stage', tStage(propagation.failed_stage)],
           ['Skipped Stages', listOf(propagation.skipped_stages).join(', ')],
           ['Run Status', runState?.status],
         ]}
@@ -1201,24 +1202,24 @@ function EvidencePanel({ runState, results, lookup, selectedEntity, setSelectedE
   const conflictReviews = conflictIds.map((id) => lookup.reviews[id]).filter(Boolean)
   return (
     <div>
-      <h2>Evidence / Metadata</h2>
+      <h2>证据 / 元信息</h2>
       {!selectedEntity ? (
-        <EmptyState text="Select a row, card, or ID to inspect evidence." />
+        <EmptyState text="请选择一行、卡片或 ID 查看证据。" />
       ) : (
         <>
           <div className="entity-heading">
-            <span className="type-badge">{selectedEntity.type}</span>
+            <span className="type-badge">{t(selectedEntity.type)}</span>
             <strong className="mono">{selectedEntity.id}</strong>
           </div>
-          {entity ? <EntitySummary entity={entity} /> : <div className="warning-note">Entity not found in current run artifacts.</div>}
+          {entity ? <EntitySummary entity={entity} /> : <div className="warning-note">当前运行结果中未找到该实体。</div>}
           <TagRow labels={['Evidence', 'Traceability', 'Uncertainty', 'Conflict']} />
           <section className="section-block">
-            <h3>Traceability Chain</h3>
+            <h3>{t('Traceability Chain')}</h3>
             <div className="quick-actions">
-              <span>View Source Evidence</span>
-              <span>View Upstream Finding</span>
-              <span>View Related Requirement</span>
-              <span>View Related Test Cases</span>
+              <span>查看来源证据</span>
+              <span>查看上游分析发现</span>
+              <span>查看相关产品需求</span>
+              <span>查看相关测试用例</span>
             </div>
             {chain.length ? (
               <ol className="chain-list">
@@ -1232,42 +1233,42 @@ function EvidencePanel({ runState, results, lookup, selectedEntity, setSelectedE
                         setSelectedTab(tabForType(item.type))
                       }}
                     >
-                      {item.label}: {item.id}
+                      {t(item.label)}: {item.id}
                     </button>
                   </li>
                 ))}
               </ol>
             ) : (
-              <EmptyState text="No traceability chain is available for this entity." />
+              <EmptyState text="该实体暂无可追溯链。" />
             )}
           </section>
           <section className="section-block">
-            <h3>Evidence Reviews [Evidence]</h3>
+            <h3>{t('Evidence Reviews [Evidence]')}</h3>
             {reviews.map((review) => (
               <article className="review-evidence" key={review.id}>
                 <div>
                   <span className="mono">{review.id}</span>
-                  <strong>{review.rating} stars</strong>
+                  <strong>{review.rating} 星</strong>
                 </div>
-                <h4>{review.raw_title || review.title || review.clean_title || 'Untitled'}</h4>
+                <h4>{review.raw_title || review.title || review.clean_title || '无标题'}</h4>
                 <p>{review.raw_body || review.body || review.clean_body}</p>
               </article>
             ))}
-            {!reviews.length ? <EmptyState text="No direct review evidence is available for this selection." /> : null}
+            {!reviews.length ? <EmptyState text="当前选择项没有直接评论证据。" /> : null}
           </section>
           <section className="section-block">
-            <h3>Conflicting Evidence [Conflict]</h3>
+            <h3>{t('Conflicting Evidence [Conflict]')}</h3>
             {conflictReviews.map((review) => (
               <article className="review-evidence conflict" key={review.id}>
                 <div>
                   <span className="mono">{review.id}</span>
-                  <strong>{review.rating} stars</strong>
+                  <strong>{review.rating} 星</strong>
                 </div>
-                <h4>{review.raw_title || review.title || review.clean_title || 'Untitled'}</h4>
+                <h4>{review.raw_title || review.title || review.clean_title || '无标题'}</h4>
                 <p>{review.raw_body || review.body || review.clean_body}</p>
               </article>
             ))}
-            {!conflictReviews.length ? <div className="conflict-note">No conflicting evidence recorded</div> : null}
+            {!conflictReviews.length ? <div className="conflict-note">暂无冲突证据记录</div> : null}
           </section>
           <KeyValuePanel title="Run" data={{ run_id: runState?.run_id, status: runState?.status, source: results.reviews?.source }} />
         </>
@@ -1278,7 +1279,7 @@ function EvidencePanel({ runState, results, lookup, selectedEntity, setSelectedE
 
 function StageList({ stages, selectedStageId, onSelect }) {
   if (!stages.length) {
-    return <EmptyState text="Create a run to initialize the 11 workflow stages." />
+    return <EmptyState text="创建运行后会初始化 11 个工作流阶段。" />
   }
   return (
     <ol className="stage-list">
@@ -1293,8 +1294,8 @@ function StageList({ stages, selectedStageId, onSelect }) {
             >
               <span className="stage-symbol">{meta.symbol}</span>
               <span className="stage-name">
-                <strong>{stage.label_zh}</strong>
-                <small>{stage.label_en}</small>
+                <strong>{STAGE_LABELS[stage.stage] || stage.label_zh || tStage(stage.stage)}</strong>
+                <small>{stage.stage}</small>
               </span>
               <span className="stage-status">{meta.label}</span>
             </button>
@@ -1310,7 +1311,7 @@ function StageDetail({ stage, revisions }) {
   const stageRevisions = listOf(revisions).filter((revision) => revision.stage === stage.stage)
   return (
     <section className="stage-detail">
-      <h3>Stage Detail</h3>
+      <h3>{t('Stage Detail')}</h3>
       <dl className="definition-grid compact-grid">
         <FragmentPair term="Status" description={stage.status} />
         <FragmentPair term="Started" description={stage.started_at || 'pending'} />
@@ -1321,7 +1322,7 @@ function StageDetail({ stage, revisions }) {
       <KeyValuePanel title="Summary" data={stage.summary || {}} />
       <ListBlock title="Artifacts" items={stage.artifacts} />
       <ListBlock title="Warnings" items={stage.warnings} emphasized />
-      <ListBlock title="Errors" items={(stage.errors || []).map((error) => `${error.type}: ${error.message}`)} emphasized />
+      <ListBlock title="Errors" items={(stage.errors || []).map((error) => `${tErrorType(error.type)}: ${error.message}`)} emphasized />
       <ListBlock
         title="Revisions"
         items={stageRevisions.map((revision) => `${revision.revision_id}: ${revision.status} · ${revision.reason}`)}
@@ -1334,17 +1335,17 @@ function StageDetail({ stage, revisions }) {
 function Diagnostics({ title, items, emptyText }) {
   return (
     <div className="diagnostic">
-      <h2>{title}</h2>
+      <h2>{t(title)}</h2>
       {items.length ? (
         <ul className="diagnostic-list">
           {items.map((item, index) => (
             <li className="diagnostic-card" key={`${title}-${index}`}>
               <div className="diagnostic-head">
-                <span className="type-badge">{item.category || title.replace(/s$/, '')}</span>
+                <span className="type-badge">{tErrorType(item.category || title.replace(/s$/, ''))}</span>
                 <strong className="mono">{item.stage || item.revision_id || 'run'}</strong>
               </div>
               <dl className="definition-grid compact-grid">
-                <FragmentPair term="Type" description={item.type || item.status || 'status'} />
+                <FragmentPair term="Type" description={tErrorType(item.type || item.status || 'status')} />
                 <FragmentPair term="Message" description={item.message || item.reason || 'none'} />
                 <FragmentPair term="Recoverable" description={formatValue(item.recoverable)} />
                 <FragmentPair term="Timestamp" description={item.timestamp || 'unknown'} />
@@ -1359,11 +1360,11 @@ function Diagnostics({ title, items, emptyText }) {
   )
 }
 
-function Metric({ label, value, mono = false }) {
+function Metric({ label, value, mono = false, valueFormatter = formatValue }) {
   return (
     <div className="metric">
-      <span>{label}</span>
-      <strong className={mono ? 'mono' : ''}>{formatValue(value)}</strong>
+      <span>{t(label)}</span>
+      <strong className={mono ? 'mono' : ''}>{valueFormatter(value)}</strong>
     </div>
   )
 }
@@ -1372,7 +1373,7 @@ function StatusPill({ value, label }) {
   const normalized = String(value || 'pending').toLowerCase()
   return (
     <span className={`status-pill ${normalized}`}>
-      {label}: {value || 'pending'}
+      {t(label)}: {tStatus(value || 'pending')}
     </span>
   )
 }
@@ -1381,7 +1382,7 @@ function Distribution({ title, data, sourceLabel }) {
   const entries = Object.entries(data || {})
   return (
     <section className="section-block">
-      <h3>{title}</h3>
+      <h3>{t(title)}</h3>
       {sourceLabel ? <TagRow labels={[sourceLabel]} /> : null}
       {entries.length ? (
         <div className="distribution">
@@ -1393,7 +1394,7 @@ function Distribution({ title, data, sourceLabel }) {
           ))}
         </div>
       ) : (
-        <EmptyState text="Distribution is not available yet." />
+        <EmptyState text="当前暂无分布数据。" />
       )}
     </section>
   )
@@ -1404,7 +1405,7 @@ function KeyValuePanel({ title, data }) {
   if (!entries.length) return null
   return (
     <section className="section-block">
-      <h3>{title}</h3>
+      <h3>{t(title)}</h3>
       <dl className="definition-grid">
         {entries.slice(0, 30).map(([key, value]) => (
           <FragmentPair key={key} term={key} description={formatValue(value)} />
@@ -1417,8 +1418,8 @@ function KeyValuePanel({ title, data }) {
 function FragmentPair({ term, description }) {
   return (
     <>
-      <dt>{term}</dt>
-      <dd>{description}</dd>
+      <dt>{t(term)}</dt>
+      <dd>{formatValue(description)}</dd>
     </>
   )
 }
@@ -1428,7 +1429,7 @@ function ListBlock({ title, items, emphasized = false }) {
   if (!values.length) return null
   return (
     <section className={`list-block ${emphasized ? 'emphasized' : ''}`}>
-      <h4>{title}</h4>
+      <h4>{t(title)}</h4>
       <ul>
         {values.map((item, index) => (
           <li key={`${title}-${index}`}>{item}</li>
@@ -1443,8 +1444,8 @@ function OpenQuestionBlock({ items }) {
   if (!values.length) return null
   return (
     <section className="open-question-block">
-      <h4>Open Questions</h4>
-      <div className="status-line">Status: Open Product Decision</div>
+      <h4>{t('Open Questions')}</h4>
+      <div className="status-line">{t('Status')}: {t('Open Product Decision')}</div>
       <ul>
         {values.map((item, index) => (
           <li key={`open-question-${index}`}>{formatValue(item)}</li>
@@ -1461,9 +1462,9 @@ function SuccessMetricsBlock({ items }) {
   }
   return (
     <section className="open-question-block">
-      <h4>Success Metrics</h4>
-      <div className="status-line">No validated success metrics defined yet.</div>
-      <p>Product decision required: define measurable success metrics.</p>
+      <h4>{t('Success Metrics')}</h4>
+      <div className="status-line">当前没有已验证的成功指标。</div>
+      <p>需要产品决策：定义可衡量的成功指标。</p>
     </section>
   )
 }
@@ -1473,7 +1474,7 @@ function TagRow({ labels }) {
     <div className="tag-row">
       {labels.map((label) => (
         <span className="semantic-tag" key={label}>
-          [{label}]
+          [{t(label)}]
         </span>
       ))}
     </div>
@@ -1487,7 +1488,7 @@ function MetaLine({ items }) {
         .filter(([, value]) => value !== undefined && value !== null && value !== '')
         .map(([label, value]) => (
           <span key={label}>
-            {label}: <strong>{formatValue(value)}</strong>
+            {t(label)}: <strong>{formatValue(value)}</strong>
           </span>
         ))}
     </div>
@@ -1510,7 +1511,7 @@ function IdLinks({ ids, type, setSelectedEntity }) {
 
 function Confidence({ value }) {
   if (value === undefined || value === null || value === '') return null
-  return <span className="confidence">confidence {Number(value).toFixed(2)}</span>
+  return <span className="confidence">置信度 {Number(value).toFixed(2)}</span>
 }
 
 function EmptyState({ text }) {
@@ -1521,13 +1522,13 @@ function Pagination({ page, pageCount, onPage }) {
   return (
     <div className="pagination">
       <button type="button" className="secondary compact" disabled={page <= 1} onClick={() => onPage(page - 1)}>
-        Previous
+        上一页
       </button>
       <span>
-        Page {page} / {pageCount}
+        第 {page} / {pageCount} 页
       </span>
       <button type="button" className="secondary compact" disabled={page >= pageCount} onClick={() => onPage(page + 1)}>
-        Next
+        下一页
       </button>
     </div>
   )
@@ -1547,7 +1548,7 @@ function TraceMaps({ graph }) {
     <div className="trace-map-list">
       {maps.map(([title, mapping]) => (
         <section className="section-block" key={title}>
-          <h3>{title}</h3>
+          <h3>{t(title)}</h3>
           {Object.entries(mapping || {}).slice(0, 20).map(([parent, children]) => (
             <div className="trace-row" key={parent}>
               <span className="mono">{parent}</span>
@@ -1688,16 +1689,15 @@ function constraintsForRating(value) {
 
 function constraintLabel(value) {
   const rating = value?.rating
-  if (!rating) return 'All Ratings'
+  if (!rating) return '全部评分'
   const min = rating.min
   const max = rating.max
   if (min === undefined || max === undefined) return formatValue(value)
-  return `${min}-${max} Stars`
+  return `${min}-${max} 星`
 }
 
 function analysisFocusLabel(value) {
-  const option = analysisFocusOptions.find((item) => item.value === value)
-  return option?.label || value || 'Product Problems'
+  return tFocus(value)
 }
 
 function formatAcceptanceCriteria(items) {
@@ -1711,23 +1711,23 @@ function pendingChecks(validation, validationPayload) {
   const blockers = listOf(validation?.submission_blockers || validationPayload?.submission_blockers)
   if (blockers.length) return blockers
   if (validation?.submission_validation_status === 'pending' || validationPayload?.submission_validation_status === 'pending') {
-    return ['UI readiness', 'Final generalized live input tests', 'Final delivery documentation']
+    return ['UI 就绪状态', '最终泛化真实输入测试', '最终交付文档']
   }
   return []
 }
 
 function runtimePipelineMessage(status) {
-  if (status === 'pass' || status === 'completed') return 'Runtime Pipeline Completed'
-  if (status === 'fail' || status === 'failed') return 'Runtime Pipeline Failed'
-  if (status === 'pending') return 'Runtime Pipeline Pending'
-  return `Runtime Pipeline ${formatValue(status)}`
+  if (status === 'pass' || status === 'completed') return '运行时流水线已完成'
+  if (status === 'fail' || status === 'failed') return '运行时流水线失败'
+  if (status === 'pending') return '运行时流水线待完成'
+  return `运行时流水线：${formatValue(status)}`
 }
 
 function formatApiError(detail) {
-  if (!detail) return 'Request failed'
+  if (!detail) return '请求失败'
   if (typeof detail === 'string') return detail
   if (typeof detail === 'object') {
-    const type = detail.type || detail.error || 'Error'
+    const type = tErrorType(detail.type || detail.error || 'unknown_error')
     const message = detail.message || detail.detail || JSON.stringify(detail)
     return `${type}: ${message}`
   }
@@ -1735,18 +1735,18 @@ function formatApiError(detail) {
 }
 
 function formatBytes(bytes) {
-  if (!Number.isFinite(bytes)) return 'none'
+  if (!Number.isFinite(bytes)) return '无'
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
   return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
 }
 
 function formatValue(value) {
-  if (value === undefined || value === null || value === '') return 'none'
+  if (value === undefined || value === null || value === '') return '无'
   if (Array.isArray(value)) return value.map(formatValue).join(', ')
-  if (typeof value === 'object') return JSON.stringify(value)
+  if (typeof value === 'object') return Object.entries(value).map(([key, item]) => `${t(key)}=${formatValue(item)}`).join('; ')
   if (typeof value === 'number') return Number.isInteger(value) ? String(value) : value.toFixed(2)
-  return String(value)
+  return t(String(value))
 }
 
 function truncate(value, maxLength) {
